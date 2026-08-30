@@ -50,6 +50,7 @@ export type StrategyResult = {
 };
 
 export type SimulationResult = {
+  scenario: ScenarioConfig;
   seed: number;
   durationMs: number;
   customerCount: number;
@@ -199,19 +200,29 @@ export function generateCustomers(count = 300, seed = 20260830): Customer[] {
 function runStrategy(
   baseCustomers: Customer[],
   strategy: (typeof strategyDefinitions)[number],
-  steps: number,
+  scenario: ScenarioConfig,
   seed: number,
 ): { result: StrategyResult; customers: Customer[] } {
+  const steps = scenario.timeSteps;
+  const shockMagnitude = Math.abs(scenario.marketShock);
   const random = mulberry32(seed + strategy.id.length * 997);
   const customers = baseCustomers.map((customer) => ({
     ...customer,
     psychology: { ...customer.psychology },
   }));
   const snapshots: Snapshot[] = [];
+  for (const customer of customers) {
+    const p = customer.psychology;
+    customer.panic = clamp(
+      customer.panic * 0.42 + shockMagnitude * (0.72 + p.lossAversion * 0.78) - p.discipline * 0.05,
+    );
+    customer.sell = clamp(logistic((customer.panic - 0.54) * 5.1 + p.herding * 0.55 - p.discipline));
+  }
   let previousMeanPanic = customers.reduce((sum, customer) => sum + customer.panic, 0) / customers.length;
 
   for (let step = 1; step <= steps; step += 1) {
-    const marketStress = 0.21 + step * 0.012;
+    const eventPersistence = 0.88 + (1 - step / steps) * 0.22;
+    const marketStress = (0.095 + shockMagnitude * 0.82) * eventPersistence + step * 0.006;
     for (const customer of customers) {
       const p = customer.psychology;
       const targetedBoost = strategy.id === 'segmented'
@@ -220,7 +231,8 @@ function runStrategy(
       const broadcastAlarm = strategy.id === 'broadcast'
         ? strategy.toneRisk * (p.lossAversion + p.herding)
         : 0;
-      const neighborEffect = previousMeanPanic * p.herding * 0.2;
+      const propagationGain = 0.16 + shockMagnitude * 0.55;
+      const neighborEffect = previousMeanPanic * p.herding * propagationGain;
       const noise = (random() - 0.5) * 0.035;
       customer.panic = clamp(
         customer.panic * 0.56 +
@@ -277,20 +289,18 @@ function runStrategy(
   };
 }
 
-export function runSimulation(
-  customerCount = 300,
-  steps = 10,
-  seed = 20260830,
-): SimulationResult {
+export function runSimulation(scenario: ScenarioConfig = defaultScenario): SimulationResult {
+  const { customerCount, timeSteps: steps, seed } = scenario;
   const baseCustomers = generateCustomers(customerCount, seed);
   const runs = strategyDefinitions.map((strategy, index) =>
-    runStrategy(baseCustomers, strategy, steps, seed + index * 101),
+    runStrategy(baseCustomers, strategy, scenario, seed + index * 101),
   );
   const strategies = runs.map((run) => run.result).sort((a, b) => b.score - a.score);
   const recommended = strategies[0].id;
   const recommendedCustomers = runs.find((run) => run.result.id === recommended)?.customers ?? baseCustomers;
 
   return {
+    scenario,
     seed,
     // Keep the server-rendered and client-hydrated demo identical. Production
     // workers can attach observed wall-clock latency as a separate audit metric.
@@ -329,11 +339,11 @@ export function runSimulation(
       },
     ],
     audit: [
-      { time: '13:45:02', actor: 'Planner', action: '拆解业务目标', result: '生成 5 步执行计划' },
+      { time: '13:45:02', actor: 'Planner', action: '解析并拆解业务目标', result: `市场冲击 ${(scenario.marketShock * 100).toFixed(0)}%、持续 ${scenario.durationHours} 小时` },
       { time: '13:45:04', actor: 'CustomerQueryTool', action: '筛选目标客户', result: `命中 ${customerCount} 名脱敏客户` },
       { time: '13:45:07', actor: 'ProfileTool', action: '构建行为画像', result: '5 类原型、6 个心理因素' },
       { time: '13:45:10', actor: 'StrategyTool', action: '生成候选策略', result: '3 套策略通过结构校验' },
-      { time: '13:45:13', actor: 'SimulationTool', action: '执行群体模拟', result: `${steps} 个时间步、随机种子 ${seed}` },
+      { time: '13:45:13', actor: 'SimulationTool', action: '执行群体模拟', result: `${steps} 个时间步、市场冲击 ${(scenario.marketShock * 100).toFixed(0)}%、随机种子 ${seed}` },
       { time: '13:45:28', actor: 'PolicyGateway', action: '合规审查', result: '1 项阻断、1 项待审批' },
     ],
   };
@@ -342,3 +352,4 @@ export function runSimulation(
 export function percent(value: number, digits = 1) {
   return `${(value * 100).toFixed(digits)}%`;
 }
+import { defaultScenario, type ScenarioConfig } from './scenario';

@@ -61,6 +61,11 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  parseScenarioPrompt,
+  scenarioLabel,
+  type ScenarioConfig,
+} from '@/lib/scenario';
+import {
   percent,
   runSimulation,
   type Customer,
@@ -81,7 +86,7 @@ const plan = [
   ['识别目标客户', '筛选持有高波动产品且近期回撤超过 8% 的客户'],
   ['构建行为画像', '聚合风险等级、心理参数与历史服务记忆'],
   ['生成候选策略', '形成不干预、统一提示、分群沟通三套方案'],
-  ['运行群体模拟', '300 名虚拟客户 × 10 个时间步'],
+  ['运行群体模拟', '按结构化 ScenarioConfig 执行客户群体传播'],
   ['完成合规审查', '适当性、误导性表达与人工审批检查'],
 ] as const;
 
@@ -94,10 +99,12 @@ const chartConfig = {
 function AppShell({
   active,
   onNavigate,
+  scenario,
   children,
 }: {
   active: View;
   onNavigate: (view: View) => void;
+  scenario: ScenarioConfig;
   children: React.ReactNode;
 }) {
   const activeItem = nav.find((item) => item.id === active) ?? nav[0];
@@ -156,10 +163,10 @@ function AppShell({
           <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-card/85 px-4 backdrop-blur md:px-8">
             <div>
               <p className="text-xs font-medium text-muted-foreground">{activeItem.label}</p>
-              <h1 className="font-heading text-base font-semibold">暴跌行情客户群体压力测试</h1>
+              <h1 className="font-heading text-base font-semibold">市场下跌 {(Math.abs(scenario.marketShock) * 100).toFixed(0)}% 客户群体压力测试</h1>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="hidden sm:inline-flex">场景 #SC-0829</Badge>
+              <Badge variant="outline" className="hidden sm:inline-flex">{scenario.durationHours} 小时 · 种子 {scenario.seed}</Badge>
               <Button variant="outline" size="sm" className="hidden sm:inline-flex"><Search />搜索</Button>
               <Button size="sm" onClick={() => onNavigate('tasks')}><Sparkles />新建任务</Button>
             </div>
@@ -225,7 +232,7 @@ function PropagationNetwork({ customers, step }: { customers: Customer[]; step: 
   );
 }
 
-function TaskCenter({ result, running, progress, completedSteps, prompt, setPrompt, onRun, onNavigate }: {
+function TaskCenter({ result, running, progress, completedSteps, prompt, setPrompt, onRun, onNavigate, scenarioNotice }: {
   result: SimulationResult;
   running: boolean;
   progress: number;
@@ -234,6 +241,7 @@ function TaskCenter({ result, running, progress, completedSteps, prompt, setProm
   setPrompt: (value: string) => void;
   onRun: () => void;
   onNavigate: (view: View) => void;
+  scenarioNotice: string;
 }) {
   const recommended = result.strategies.find((item) => item.id === result.recommended)!;
   const highRisk = result.customers.filter((customer) => customer.priority === '高').length;
@@ -252,9 +260,10 @@ function TaskCenter({ result, running, progress, completedSteps, prompt, setProm
           </CardHeader>
           <CardContent>
             <Textarea aria-label="任务描述" value={prompt} onChange={(event) => setPrompt(event.target.value)} className="min-h-28 resize-none border-primary/15 bg-background/80 p-4 text-[15px] leading-7 shadow-inner" />
+            {scenarioNotice && <p className="mt-2 text-xs text-amber-700">{scenarioNotice}</p>}
             {running && <div className="mt-4"><div className="mb-2 flex justify-between text-xs"><span>正在执行：{plan[Math.min(completedSteps, 4)][0]}</span><span className="font-mono">{progress}%</span></div><Progress value={progress} /></div>}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-2"><Badge variant="outline">{result.customerCount} 名客户</Badge><Badge variant="outline">10 个时间步</Badge><Badge variant="outline">随机种子 {result.seed}</Badge></div>
+              <div className="flex flex-wrap gap-2"><Badge variant="outline">下跌 {(Math.abs(result.scenario.marketShock) * 100).toFixed(0)}%</Badge><Badge variant="outline">{result.customerCount} 名客户</Badge><Badge variant="outline">{result.scenario.timeSteps} 个时间步</Badge><Badge variant="outline">随机种子 {result.seed}</Badge></div>
               <Button size="lg" className="px-4" onClick={onRun} disabled={running}>{running ? <LoaderCircle className="animate-spin" /> : <Play className="fill-current" />}{running ? '分析中' : '开始分析'}</Button>
             </div>
           </CardContent>
@@ -286,9 +295,9 @@ function TaskCenter({ result, running, progress, completedSteps, prompt, setProm
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><div className="flex items-start justify-between gap-4"><div><CardTitle className="flex items-center gap-2"><UsersRound className="size-4 text-primary" />客户群体传播预览</CardTitle><CardDescription className="mt-1">分群沟通策略 · 时间步 6 / 10</CardDescription></div><Button variant="outline" size="sm" onClick={() => onNavigate('sandbox')}><FlaskConical />进入沙盘</Button></div></CardHeader>
-          <CardContent><div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]"><PropagationNetwork customers={result.customers} step={6} /><div className="space-y-4">{[
-            ['恐慌情绪', recommended.snapshots[5].panic, 'text-rose-600'], ['卖出倾向', recommended.snapshots[5].sell, 'text-amber-600'], ['机构信任', recommended.snapshots[5].trust, 'text-emerald-600'], ['触达覆盖', recommended.snapshots[5].coverage, 'text-sky-600'],
+          <CardHeader><div className="flex items-start justify-between gap-4"><div><CardTitle className="flex items-center gap-2"><UsersRound className="size-4 text-primary" />客户群体传播预览</CardTitle><CardDescription className="mt-1">分群沟通策略 · 时间步 {Math.min(6, result.scenario.timeSteps)} / {result.scenario.timeSteps}</CardDescription></div><Button variant="outline" size="sm" onClick={() => onNavigate('sandbox')}><FlaskConical />进入沙盘</Button></div></CardHeader>
+          <CardContent><div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]"><PropagationNetwork customers={result.customers} step={Math.min(6, result.scenario.timeSteps)} /><div className="space-y-4">{[
+            ['恐慌情绪', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].panic, 'text-rose-600'], ['卖出倾向', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].sell, 'text-amber-600'], ['机构信任', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].trust, 'text-emerald-600'], ['触达覆盖', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].coverage, 'text-sky-600'],
           ].map(([label, value, color]) => <div key={label as string}><div className="mb-1.5 flex items-center justify-between text-xs"><span className="text-muted-foreground">{label}</span><span className={`font-mono font-semibold ${color}`}>{percent(value as number, 0)}</span></div><Progress value={(value as number) * 100} /></div>)}<div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800"><span className="font-semibold">关键节点 {result.customers[0].id}</span><br />高影响力、高从众敏感度，建议在第 3 时间步前人工介入。</div></div></div></CardContent>
         </Card>
       </div>
@@ -312,7 +321,7 @@ function CustomerInsights({ result }: { result: SimulationResult }) {
 
 function SandboxView({ result }: { result: SimulationResult }) {
   const [strategy, setStrategy] = useState<StrategyId>(result.recommended);
-  const [step, setStep] = useState(6);
+  const [step, setStep] = useState(Math.min(6, result.scenario.timeSteps));
   const [playing, setPlaying] = useState(false);
   const selected = result.strategies.find((item) => item.id === strategy)!;
   const snapshot = selected.snapshots[step - 1];
@@ -327,13 +336,13 @@ function SandboxView({ result }: { result: SimulationResult }) {
     let cursor = step;
     const timer = window.setInterval(() => {
       cursor += 1;
-      if (cursor > 10) { window.clearInterval(timer); setPlaying(false); return; }
+      if (cursor > result.scenario.timeSteps) { window.clearInterval(timer); setPlaying(false); return; }
       setStep(cursor);
     }, 450);
   };
   return <div className="space-y-5">
     <div className="grid gap-3 lg:grid-cols-3">{result.strategies.map((item) => <button key={item.id} onClick={() => setStrategy(item.id)} className={`rounded-xl border p-4 text-left transition-all ${strategy === item.id ? 'border-primary bg-primary/5 shadow-sm ring-2 ring-primary/10' : 'bg-card hover:border-primary/30'}`}><div className="flex items-center justify-between"><span className="font-medium">{item.name}</span>{item.id === result.recommended && <Badge>推荐</Badge>}</div><p className="mt-2 text-xs leading-5 text-muted-foreground">{item.description}</p><div className="mt-3 flex items-end justify-between"><span className="text-xs text-muted-foreground">综合得分</span><span className="font-mono text-xl font-semibold">{(item.score * 100).toFixed(1)}</span></div></button>)}</div>
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle className="flex items-center gap-2"><Network className="size-4 text-primary" />群体传播回放</CardTitle><CardDescription>{selected.name} · 时间步 {step}/10</CardDescription></div><Button variant="outline" size="sm" onClick={togglePlay}>{playing ? <Pause /> : <Play />}{playing ? '暂停' : '播放'}</Button></div></CardHeader><CardContent><PropagationNetwork customers={result.customers} step={step} /><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场事件</span><span>机构干预</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={10} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div></CardContent></Card>
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle className="flex items-center gap-2"><Network className="size-4 text-primary" />群体传播回放</CardTitle><CardDescription>{selected.name} · {scenarioLabel(result.scenario)} · 时间步 {step}/{result.scenario.timeSteps}</CardDescription></div><Button variant="outline" size="sm" onClick={togglePlay}>{playing ? <Pause /> : <Play />}{playing ? '暂停' : '播放'}</Button></div></CardHeader><CardContent><PropagationNetwork customers={result.customers} step={step} /><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场事件</span><span>机构干预</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={result.scenario.timeSteps} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div></CardContent></Card>
       <div className="space-y-5"><Card><CardHeader><CardTitle>当前群体状态</CardTitle><CardDescription>时间步 {step} 聚合指标</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3"><MetricCard label="恐慌情绪" value={percent(snapshot.panic)} hint="客户群均值" tone="rose" /><MetricCard label="卖出倾向" value={percent(snapshot.sell)} hint="概率估计" tone="amber" /><MetricCard label="机构信任" value={percent(snapshot.trust)} hint="动态更新" tone="emerald" /><MetricCard label="触达覆盖" value={percent(snapshot.coverage)} hint="策略覆盖" tone="blue" /></CardContent></Card><Alert className="border-amber-200 bg-amber-50 text-amber-900"><TriangleAlert /><AlertTitle>发现群体临界点</AlertTitle><AlertDescription>第 4 时间步出现恐慌传播加速，优先干预前 12 个高影响节点可降低后续卖出倾向。</AlertDescription></Alert></div>
     </div>
     <Card><CardHeader><CardTitle>策略恐慌曲线对比</CardTitle><CardDescription>相同客户、市场冲击与随机种子下的对照实验</CardDescription></CardHeader><CardContent><ChartContainer config={chartConfig} className="h-[280px] w-full"><LineChart data={chartData} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}><CartesianGrid vertical={false} strokeDasharray="4 4" /><XAxis dataKey="step" tickLine={false} axisLine={false} /><YAxis tickFormatter={(value) => `${value}%`} domain={[0, 100]} tickLine={false} axisLine={false} width={44} /><ChartTooltip content={<ChartTooltipContent />} />{result.strategies.map((item) => <Line key={item.id} type="monotone" dataKey={item.id} stroke={`var(--color-${item.id})`} strokeWidth={item.id === strategy ? 3 : 1.8} dot={false} />)}</LineChart></ChartContainer></CardContent></Card>
@@ -343,7 +352,7 @@ function SandboxView({ result }: { result: SimulationResult }) {
 function AuditView({ result }: { result: SimulationResult }) {
   const downloadReport = () => {
     const recommended = result.strategies.find((item) => item.id === result.recommended)!;
-    const report = `证券客户行为沙盘 - 策略模拟报告\n\n推荐策略：${recommended.name}\n综合得分：${(recommended.score * 100).toFixed(1)}\n恐慌峰值：${percent(recommended.peakPanic)}\n卖出倾向：${percent(recommended.finalSell)}\n投诉风险：${percent(recommended.finalComplaint)}\n流失风险：${percent(recommended.finalChurn)}\n\n说明：本报告为基于合成客户的情景推演，不构成对真实客户行为的绝对预测。`;
+    const report = `证券客户行为沙盘 - 策略模拟报告\n\n场景：${scenarioLabel(result.scenario)}\n客户数量：${result.customerCount}\n时间步：${result.scenario.timeSteps}\n随机种子：${result.seed}\n推荐策略：${recommended.name}\n综合得分：${(recommended.score * 100).toFixed(1)}\n恐慌峰值：${percent(recommended.peakPanic)}\n卖出倾向：${percent(recommended.finalSell)}\n投诉风险：${percent(recommended.finalComplaint)}\n流失风险：${percent(recommended.finalChurn)}\n\n说明：本报告为基于合成客户的情景推演，不构成对真实客户行为的绝对预测。`;
     const url = URL.createObjectURL(new Blob([report], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url; link.download = '证券客户行为沙盘-策略模拟报告.txt'; link.click(); URL.revokeObjectURL(url);
@@ -362,6 +371,7 @@ export function SandboxApp() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(100);
   const [completedSteps, setCompletedSteps] = useState(5);
+  const [scenarioNotice, setScenarioNotice] = useState('');
   const [prompt, setPrompt] = useState('市场今天下跌 10%，请分析持有高波动产品的客户，生成三套沟通方案，模拟未来 24 小时的客户群体反应，并告诉我应该优先联系谁。');
 
   const handleRun = () => {
@@ -374,7 +384,9 @@ export function SandboxApp() {
       setCompletedSteps(Math.min(4, Math.floor(tick / 5)));
       if (tick >= 24) {
         window.clearInterval(timer);
-        const next = runSimulation(300, 10, 20260830);
+        const parsed = parseScenarioPrompt(prompt);
+        const next = runSimulation(parsed.config);
+        setScenarioNotice(parsed.defaultedFields.length ? `未识别的参数已使用默认值：${parsed.defaultedFields.join('、')}` : '场景参数已全部从任务描述中识别。');
         setResult(next); setProgress(100); setCompletedSteps(5); setRunning(false);
         fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, result: next }) }).catch(() => undefined);
       }
@@ -385,7 +397,7 @@ export function SandboxApp() {
   if (active === 'customers') content = <CustomerInsights result={result} />;
   else if (active === 'sandbox') content = <SandboxView result={result} />;
   else if (active === 'audit') content = <AuditView result={result} />;
-  else content = <TaskCenter result={result} running={running} progress={progress} completedSteps={completedSteps} prompt={prompt} setPrompt={setPrompt} onRun={handleRun} onNavigate={setActive} />;
+  else content = <TaskCenter result={result} running={running} progress={progress} completedSteps={completedSteps} prompt={prompt} setPrompt={setPrompt} onRun={handleRun} onNavigate={setActive} scenarioNotice={scenarioNotice} />;
 
-  return <AppShell active={active} onNavigate={setActive}>{content}</AppShell>;
+  return <AppShell active={active} onNavigate={setActive} scenario={result.scenario}>{content}</AppShell>;
 }

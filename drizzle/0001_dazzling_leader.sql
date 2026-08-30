@@ -1,0 +1,1 @@
+ALTER TABLE `simulation_runs` ADD `scenario_json` text NOT NULL;

@@ -14,6 +14,7 @@ export const simulationRuns = sqliteTable('simulation_runs', {
   seed: integer('seed').notNull(),
   customerCount: integer('customer_count').notNull(),
   timeSteps: integer('time_steps').notNull(),
+  scenarioJson: text('scenario_json').notNull(),
   recommendedStrategy: text('recommended_strategy').notNull(),
   summaryJson: text('summary_json').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),

@@ -9,6 +9,7 @@ export async function ensureDatabase() {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS simulation_runs (
       id TEXT PRIMARY KEY, task_id TEXT, seed INTEGER NOT NULL,
       customer_count INTEGER NOT NULL, time_steps INTEGER NOT NULL,
+      scenario_json TEXT NOT NULL DEFAULT '{}',
       recommended_strategy TEXT NOT NULL, summary_json TEXT NOT NULL,
       created_at INTEGER NOT NULL, FOREIGN KEY(task_id) REFERENCES tasks(id)
     )`),
@@ -18,5 +19,9 @@ export async function ensureDatabase() {
       FOREIGN KEY(task_id) REFERENCES tasks(id)
     )`),
   ]);
+  const columns = await env.DB.prepare('PRAGMA table_info(simulation_runs)').all<{ name: string }>();
+  if (!columns.results.some((column) => column.name === 'scenario_json')) {
+    await env.DB.prepare("ALTER TABLE simulation_runs ADD COLUMN scenario_json TEXT NOT NULL DEFAULT '{}'").run();
+  }
   return env.DB;
 }
