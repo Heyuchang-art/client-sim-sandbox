@@ -25,6 +25,15 @@ export type Customer = {
   priority: '高' | '中' | '低';
 };
 
+export type RelationshipType = 'similarity' | 'social' | 'service';
+
+export type RelationshipEdge = {
+  source: string;
+  target: string;
+  type: RelationshipType;
+  weight: number;
+};
+
 export type Snapshot = {
   step: number;
   panic: number;
@@ -33,6 +42,7 @@ export type Snapshot = {
   churn: number;
   trust: number;
   coverage: number;
+  contagion: number;
 };
 
 export type StrategyResult = {
@@ -55,8 +65,15 @@ export type SimulationResult = {
   durationMs: number;
   customerCount: number;
   customers: Customer[];
+  relationships: RelationshipEdge[];
   strategies: StrategyResult[];
   recommended: StrategyId;
+  explanationFactors: Array<{
+    label: string;
+    weight: number;
+    evidence: string;
+    direction: '风险上升' | '风险缓释';
+  }>;
   findings: Array<{
     id: string;
     severity: '阻断' | '警告' | '提示';
@@ -197,8 +214,45 @@ export function generateCustomers(count = 300, seed = 20260830): Customer[] {
   });
 }
 
+export function generateRelationships(customers: Customer[], seed = 20260830): RelationshipEdge[] {
+  const random = mulberry32(seed ^ 0x51f15e);
+  const edges: RelationshipEdge[] = [];
+  const seen = new Set<string>();
+  const addEdge = (source: Customer, target: Customer, type: RelationshipType, weight: number) => {
+    if (source.id === target.id) return;
+    const pair = [source.id, target.id].sort().join(':');
+    const key = `${pair}:${type}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push({ source: source.id, target: target.id, type, weight: clamp(weight, 0.15, 1) });
+  };
+
+  customers.forEach((customer, index) => {
+    const sameArchetype = customers.filter((candidate) => candidate.archetype === customer.archetype && candidate.id !== customer.id);
+    const sameProduct = customers.filter((candidate) => candidate.product === customer.product && candidate.id !== customer.id);
+    const similar = sameArchetype[(index * 7 + 3) % Math.max(1, sameArchetype.length)];
+    const servicePeer = sameProduct[(index * 5 + 1) % Math.max(1, sameProduct.length)];
+    const socialPeer = customers[Math.floor(random() * customers.length)];
+    if (similar) addEdge(customer, similar, 'similarity', 0.45 + random() * 0.3);
+    if (socialPeer) addEdge(customer, socialPeer, 'social', 0.5 + customer.influence * 0.45);
+    if (servicePeer) addEdge(customer, servicePeer, 'service', 0.35 + random() * 0.28);
+  });
+  return edges;
+}
+
+function buildAdjacency(customers: Customer[], relationships: RelationshipEdge[]) {
+  const adjacency = new Map<string, Array<{ neighbor: string; type: RelationshipType; weight: number }>>();
+  customers.forEach((customer) => adjacency.set(customer.id, []));
+  relationships.forEach((edge) => {
+    adjacency.get(edge.source)?.push({ neighbor: edge.target, type: edge.type, weight: edge.weight });
+    adjacency.get(edge.target)?.push({ neighbor: edge.source, type: edge.type, weight: edge.weight });
+  });
+  return adjacency;
+}
+
 function runStrategy(
   baseCustomers: Customer[],
+  relationships: RelationshipEdge[],
   strategy: (typeof strategyDefinitions)[number],
   scenario: ScenarioConfig,
   seed: number,
@@ -211,6 +265,7 @@ function runStrategy(
     psychology: { ...customer.psychology },
   }));
   const snapshots: Snapshot[] = [];
+  const adjacency = buildAdjacency(customers, relationships);
   for (const customer of customers) {
     const p = customer.psychology;
     customer.panic = clamp(
@@ -221,8 +276,10 @@ function runStrategy(
   let previousMeanPanic = customers.reduce((sum, customer) => sum + customer.panic, 0) / customers.length;
 
   for (let step = 1; step <= steps; step += 1) {
+    const previousPanics = new Map(customers.map((customer) => [customer.id, customer.panic]));
     const eventPersistence = 0.88 + (1 - step / steps) * 0.22;
     const marketStress = (0.095 + shockMagnitude * 0.82) * eventPersistence + step * 0.006;
+    let contagionTotal = 0;
     for (const customer of customers) {
       const p = customer.psychology;
       const targetedBoost = strategy.id === 'segmented'
@@ -231,8 +288,19 @@ function runStrategy(
       const broadcastAlarm = strategy.id === 'broadcast'
         ? strategy.toneRisk * (p.lossAversion + p.herding)
         : 0;
+      const neighbors = adjacency.get(customer.id) ?? [];
+      let weightedPanic = 0;
+      let totalWeight = 0;
+      neighbors.forEach((edge) => {
+        const typeGain = edge.type === 'social' ? 1 : edge.type === 'similarity' ? 0.72 : strategy.id === 'segmented' ? 0.42 : 0.58;
+        const weight = edge.weight * typeGain;
+        weightedPanic += (previousPanics.get(edge.neighbor) ?? previousMeanPanic) * weight;
+        totalWeight += weight;
+      });
+      const neighborPanic = totalWeight ? weightedPanic / totalWeight : previousMeanPanic;
       const propagationGain = 0.16 + shockMagnitude * 0.55;
-      const neighborEffect = previousMeanPanic * p.herding * propagationGain;
+      const neighborEffect = neighborPanic * p.herding * propagationGain;
+      contagionTotal += neighborEffect;
       const noise = (random() - 0.5) * 0.035;
       customer.panic = clamp(
         customer.panic * 0.56 +
@@ -263,6 +331,7 @@ function runStrategy(
       churn: mean((customer) => customer.churn),
       trust: mean((customer) => customer.psychology.trust),
       coverage: clamp(strategy.coverage * (0.55 + step / steps * 0.52)),
+      contagion: contagionTotal / customers.length,
     });
   }
 
@@ -292,8 +361,9 @@ function runStrategy(
 export function runSimulation(scenario: ScenarioConfig = defaultScenario): SimulationResult {
   const { customerCount, timeSteps: steps, seed } = scenario;
   const baseCustomers = generateCustomers(customerCount, seed);
+  const relationships = generateRelationships(baseCustomers, seed);
   const runs = strategyDefinitions.map((strategy, index) =>
-    runStrategy(baseCustomers, strategy, scenario, seed + index * 101),
+    runStrategy(baseCustomers, relationships, strategy, scenario, seed + index * 101),
   );
   const strategies = runs.map((run) => run.result).sort((a, b) => b.score - a.score);
   const recommended = strategies[0].id;
@@ -306,12 +376,39 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario): Simul
     // workers can attach observed wall-clock latency as a separate audit metric.
     durationMs: Math.round((8.6 + (customerCount * steps) / 1500) * 10) / 10,
     customerCount,
+    relationships,
     customers: [...recommendedCustomers].sort((a, b) => {
       const priority = { 高: 3, 中: 2, 低: 1 };
       return priority[b.priority] - priority[a.priority] || b.influence - a.influence;
     }),
     strategies,
     recommended,
+    explanationFactors: [
+      {
+        label: '市场损失冲击',
+        weight: clamp(Math.abs(scenario.marketShock) / 0.35),
+        evidence: `市场跌幅 ${(Math.abs(scenario.marketShock) * 100).toFixed(0)}%，直接进入每个客户的初始损失感知。`,
+        direction: '风险上升',
+      },
+      {
+        label: '损失厌恶',
+        weight: baseCustomers.reduce((sum, customer) => sum + customer.psychology.lossAversion, 0) / customerCount,
+        evidence: '来自五类客户原型的心理参数均值，并按客户逐一计算。',
+        direction: '风险上升',
+      },
+      {
+        label: '关系网络传播',
+        weight: baseCustomers.reduce((sum, customer) => sum + customer.psychology.herding, 0) / customerCount,
+        evidence: `${relationships.length} 条相似性、社交影响和统一服务关系边参与邻居状态更新。`,
+        direction: '风险上升',
+      },
+      {
+        label: '分群干预缓释',
+        weight: strategyDefinitions.find((strategy) => strategy.id === recommended)?.calming ?? 0,
+        evidence: '按风险偏好、机构信任和网络影响力调整干预强度。',
+        direction: '风险缓释',
+      },
+    ],
     findings: [
       {
         id: 'CF-001',
@@ -342,6 +439,7 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario): Simul
       { time: '13:45:02', actor: 'Planner', action: '解析并拆解业务目标', result: `市场冲击 ${(scenario.marketShock * 100).toFixed(0)}%、持续 ${scenario.durationHours} 小时` },
       { time: '13:45:04', actor: 'CustomerQueryTool', action: '筛选目标客户', result: `命中 ${customerCount} 名脱敏客户` },
       { time: '13:45:07', actor: 'ProfileTool', action: '构建行为画像', result: '5 类原型、6 个心理因素' },
+      { time: '13:45:09', actor: 'RelationshipTool', action: '构建客户关系网络', result: `${relationships.length} 条关系边、3 类传播通道` },
       { time: '13:45:10', actor: 'StrategyTool', action: '生成候选策略', result: '3 套策略通过结构校验' },
       { time: '13:45:13', actor: 'SimulationTool', action: '执行群体模拟', result: `${steps} 个时间步、市场冲击 ${(scenario.marketShock * 100).toFixed(0)}%、随机种子 ${seed}` },
       { time: '13:45:28', actor: 'PolicyGateway', action: '合规审查', result: '1 项阻断、1 项待审批' },

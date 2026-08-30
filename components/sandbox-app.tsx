@@ -69,6 +69,7 @@ import {
   percent,
   runSimulation,
   type Customer,
+  type RelationshipEdge,
   type SimulationResult,
   type StrategyId,
 } from '@/lib/simulation';
@@ -196,7 +197,7 @@ function MetricCard({ label, value, hint, tone = 'blue' }: { label: string; valu
   );
 }
 
-function PropagationNetwork({ customers, step }: { customers: Customer[]; step: number }) {
+function PropagationNetwork({ customers, relationships, step }: { customers: Customer[]; relationships: RelationshipEdge[]; step: number }) {
   const nodes = customers.slice(0, 24).map((customer, index) => {
     const column = index % 6;
     const row = Math.floor(index / 6);
@@ -206,13 +207,22 @@ function PropagationNetwork({ customers, step }: { customers: Customer[]; step: 
     const fill = intensity > 0.62 ? '#ef4444' : intensity > 0.46 ? '#f59e0b' : customer.psychology.trust > 0.68 ? '#10b981' : '#3b82f6';
     return { ...customer, x, y, radius: 6 + customer.influence * 8, fill };
   });
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const visibleEdges = relationships.filter((edge) => nodeMap.has(edge.source) && nodeMap.has(edge.target)).slice(0, 42);
+  const edgeStyle = {
+    similarity: { stroke: '#3b82f6', dash: undefined },
+    social: { stroke: '#f59e0b', dash: undefined },
+    service: { stroke: '#10b981', dash: '4 3' },
+  } as const;
   return (
     <div className="relative min-h-[330px] overflow-hidden rounded-xl border bg-[radial-gradient(circle_at_50%_50%,color-mix(in_oklch,var(--primary)_9%,transparent),transparent_68%),linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] bg-[size:auto,28px_28px,28px_28px]">
       <svg viewBox="0 0 660 300" className="absolute inset-0 size-full" aria-label="客户群体传播网络">
-        <g stroke="currentColor" className="text-border" strokeWidth="1">
-          {nodes.map((node, index) => {
-            const next = nodes[(index + 5) % nodes.length];
-            return <line key={node.id} x1={node.x} y1={node.y} x2={next.x} y2={next.y} opacity={0.38 + node.influence * 0.35} />;
+        <g strokeWidth="1.2">
+          {visibleEdges.map((edge) => {
+            const source = nodeMap.get(edge.source)!;
+            const target = nodeMap.get(edge.target)!;
+            const style = edgeStyle[edge.type];
+            return <line key={`${edge.source}-${edge.target}-${edge.type}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={style.stroke} strokeDasharray={style.dash} opacity={0.18 + edge.weight * 0.48} />;
           })}
         </g>
         {nodes.map((node) => (
@@ -227,12 +237,15 @@ function PropagationNetwork({ customers, step }: { customers: Customer[]; step: 
         <span><i className="mr-1 inline-block size-2 rounded-full bg-amber-500" />观望</span>
         <span><i className="mr-1 inline-block size-2 rounded-full bg-emerald-500" />稳定</span>
         <span><i className="mr-1 inline-block size-2 rounded-full bg-blue-500" />待观察</span>
+        <span className="border-l pl-3"><i className="mr-1 inline-block h-px w-3 bg-blue-500 align-middle" />相似性</span>
+        <span><i className="mr-1 inline-block h-px w-3 bg-amber-500 align-middle" />社交影响</span>
+        <span><i className="mr-1 inline-block h-px w-3 border-t border-dashed border-emerald-500 align-middle" />服务触达</span>
       </div>
     </div>
   );
 }
 
-function TaskCenter({ result, running, progress, completedSteps, prompt, setPrompt, onRun, onNavigate, scenarioNotice }: {
+function TaskCenter({ result, running, progress, completedSteps, prompt, setPrompt, onRun, onNavigate, scenarioNotice, executionMode }: {
   result: SimulationResult;
   running: boolean;
   progress: number;
@@ -242,6 +255,7 @@ function TaskCenter({ result, running, progress, completedSteps, prompt, setProm
   onRun: () => void;
   onNavigate: (view: View) => void;
   scenarioNotice: string;
+  executionMode: '服务端模拟' | '本地降级';
 }) {
   const recommended = result.strategies.find((item) => item.id === result.recommended)!;
   const highRisk = result.customers.filter((customer) => customer.priority === '高').length;
@@ -255,12 +269,12 @@ function TaskCenter({ result, running, progress, completedSteps, prompt, setProm
                 <CardTitle className="flex items-center gap-2"><BrainCircuit className="size-4 text-primary" />告诉 Agent 你想完成什么</CardTitle>
                 <CardDescription className="mt-1">平台将自主规划、调用工具、运行模拟并完成合规审查。</CardDescription>
               </div>
-              <Badge className="bg-emerald-500/10 text-emerald-700">Harness 在线</Badge>
+              <Badge className={executionMode === '服务端模拟' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700'}>{executionMode}</Badge>
             </div>
           </CardHeader>
           <CardContent>
             <Textarea aria-label="任务描述" value={prompt} onChange={(event) => setPrompt(event.target.value)} className="min-h-28 resize-none border-primary/15 bg-background/80 p-4 text-[15px] leading-7 shadow-inner" />
-            {scenarioNotice && <p className="mt-2 text-xs text-amber-700">{scenarioNotice}</p>}
+            {scenarioNotice && <p className={`mt-2 text-xs ${scenarioNotice.includes('失败') || scenarioNotice.includes('默认') ? 'text-amber-700' : 'text-emerald-700'}`}>{scenarioNotice}</p>}
             {running && <div className="mt-4"><div className="mb-2 flex justify-between text-xs"><span>正在执行：{plan[Math.min(completedSteps, 4)][0]}</span><span className="font-mono">{progress}%</span></div><Progress value={progress} /></div>}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2"><Badge variant="outline">下跌 {(Math.abs(result.scenario.marketShock) * 100).toFixed(0)}%</Badge><Badge variant="outline">{result.customerCount} 名客户</Badge><Badge variant="outline">{result.scenario.timeSteps} 个时间步</Badge><Badge variant="outline">随机种子 {result.seed}</Badge></div>
@@ -296,7 +310,7 @@ function TaskCenter({ result, running, progress, completedSteps, prompt, setProm
         </Card>
         <Card>
           <CardHeader><div className="flex items-start justify-between gap-4"><div><CardTitle className="flex items-center gap-2"><UsersRound className="size-4 text-primary" />客户群体传播预览</CardTitle><CardDescription className="mt-1">分群沟通策略 · 时间步 {Math.min(6, result.scenario.timeSteps)} / {result.scenario.timeSteps}</CardDescription></div><Button variant="outline" size="sm" onClick={() => onNavigate('sandbox')}><FlaskConical />进入沙盘</Button></div></CardHeader>
-          <CardContent><div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]"><PropagationNetwork customers={result.customers} step={Math.min(6, result.scenario.timeSteps)} /><div className="space-y-4">{[
+          <CardContent><div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]"><PropagationNetwork customers={result.customers} relationships={result.relationships} step={Math.min(6, result.scenario.timeSteps)} /><div className="space-y-4">{[
             ['恐慌情绪', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].panic, 'text-rose-600'], ['卖出倾向', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].sell, 'text-amber-600'], ['机构信任', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].trust, 'text-emerald-600'], ['触达覆盖', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].coverage, 'text-sky-600'],
           ].map(([label, value, color]) => <div key={label as string}><div className="mb-1.5 flex items-center justify-between text-xs"><span className="text-muted-foreground">{label}</span><span className={`font-mono font-semibold ${color}`}>{percent(value as number, 0)}</span></div><Progress value={(value as number) * 100} /></div>)}<div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800"><span className="font-semibold">关键节点 {result.customers[0].id}</span><br />高影响力、高从众敏感度，建议在第 3 时间步前人工介入。</div></div></div></CardContent>
         </Card>
@@ -342,10 +356,11 @@ function SandboxView({ result }: { result: SimulationResult }) {
   };
   return <div className="space-y-5">
     <div className="grid gap-3 lg:grid-cols-3">{result.strategies.map((item) => <button key={item.id} onClick={() => setStrategy(item.id)} className={`rounded-xl border p-4 text-left transition-all ${strategy === item.id ? 'border-primary bg-primary/5 shadow-sm ring-2 ring-primary/10' : 'bg-card hover:border-primary/30'}`}><div className="flex items-center justify-between"><span className="font-medium">{item.name}</span>{item.id === result.recommended && <Badge>推荐</Badge>}</div><p className="mt-2 text-xs leading-5 text-muted-foreground">{item.description}</p><div className="mt-3 flex items-end justify-between"><span className="text-xs text-muted-foreground">综合得分</span><span className="font-mono text-xl font-semibold">{(item.score * 100).toFixed(1)}</span></div></button>)}</div>
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle className="flex items-center gap-2"><Network className="size-4 text-primary" />群体传播回放</CardTitle><CardDescription>{selected.name} · {scenarioLabel(result.scenario)} · 时间步 {step}/{result.scenario.timeSteps}</CardDescription></div><Button variant="outline" size="sm" onClick={togglePlay}>{playing ? <Pause /> : <Play />}{playing ? '暂停' : '播放'}</Button></div></CardHeader><CardContent><PropagationNetwork customers={result.customers} step={step} /><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场事件</span><span>机构干预</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={result.scenario.timeSteps} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div></CardContent></Card>
-      <div className="space-y-5"><Card><CardHeader><CardTitle>当前群体状态</CardTitle><CardDescription>时间步 {step} 聚合指标</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3"><MetricCard label="恐慌情绪" value={percent(snapshot.panic)} hint="客户群均值" tone="rose" /><MetricCard label="卖出倾向" value={percent(snapshot.sell)} hint="概率估计" tone="amber" /><MetricCard label="机构信任" value={percent(snapshot.trust)} hint="动态更新" tone="emerald" /><MetricCard label="触达覆盖" value={percent(snapshot.coverage)} hint="策略覆盖" tone="blue" /></CardContent></Card><Alert className="border-amber-200 bg-amber-50 text-amber-900"><TriangleAlert /><AlertTitle>发现群体临界点</AlertTitle><AlertDescription>第 4 时间步出现恐慌传播加速，优先干预前 12 个高影响节点可降低后续卖出倾向。</AlertDescription></Alert></div>
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle className="flex items-center gap-2"><Network className="size-4 text-primary" />群体传播回放</CardTitle><CardDescription>{selected.name} · {scenarioLabel(result.scenario)} · 时间步 {step}/{result.scenario.timeSteps}</CardDescription></div><Button variant="outline" size="sm" onClick={togglePlay}>{playing ? <Pause /> : <Play />}{playing ? '暂停' : '播放'}</Button></div></CardHeader><CardContent><PropagationNetwork customers={result.customers} relationships={result.relationships} step={step} /><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场事件</span><span>机构干预</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={result.scenario.timeSteps} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div></CardContent></Card>
+      <div className="space-y-5"><Card><CardHeader><CardTitle>当前群体状态</CardTitle><CardDescription>时间步 {step} 聚合指标</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3"><MetricCard label="恐慌情绪" value={percent(snapshot.panic)} hint="客户群均值" tone="rose" /><MetricCard label="卖出倾向" value={percent(snapshot.sell)} hint="概率估计" tone="amber" /><MetricCard label="传播强度" value={percent(snapshot.contagion)} hint="邻居状态贡献" tone="violet" /><MetricCard label="机构信任" value={percent(snapshot.trust)} hint="动态更新" tone="emerald" /></CardContent></Card><Alert className="border-amber-200 bg-amber-50 text-amber-900"><TriangleAlert /><AlertTitle>发现群体临界点</AlertTitle><AlertDescription>三类关系网络共 {result.relationships.length} 条边参与传播计算；优先干预高影响节点可降低后续卖出倾向。</AlertDescription></Alert></div>
     </div>
     <Card><CardHeader><CardTitle>策略恐慌曲线对比</CardTitle><CardDescription>相同客户、市场冲击与随机种子下的对照实验</CardDescription></CardHeader><CardContent><ChartContainer config={chartConfig} className="h-[280px] w-full"><LineChart data={chartData} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}><CartesianGrid vertical={false} strokeDasharray="4 4" /><XAxis dataKey="step" tickLine={false} axisLine={false} /><YAxis tickFormatter={(value) => `${value}%`} domain={[0, 100]} tickLine={false} axisLine={false} width={44} /><ChartTooltip content={<ChartTooltipContent />} />{result.strategies.map((item) => <Line key={item.id} type="monotone" dataKey={item.id} stroke={`var(--color-${item.id})`} strokeWidth={item.id === strategy ? 3 : 1.8} dot={false} />)}</LineChart></ChartContainer></CardContent></Card>
+    <Card><CardHeader><CardTitle>结构化因素解释</CardTitle><CardDescription>展示进入决策的因素、权重与证据，不展示原始思维链。</CardDescription></CardHeader><CardContent className="grid gap-3 md:grid-cols-2">{result.explanationFactors.map((factor) => <div key={factor.label} className="rounded-lg border bg-muted/25 p-3"><div className="flex items-center justify-between gap-3"><span className="text-sm font-medium">{factor.label}</span><Badge variant={factor.direction === '风险缓释' ? 'outline' : 'secondary'}>{factor.direction}</Badge></div><div className="mt-2 flex items-center gap-3"><Progress value={factor.weight * 100} /><span className="w-10 text-right font-mono text-xs">{percent(factor.weight, 0)}</span></div><p className="mt-2 text-xs leading-5 text-muted-foreground">{factor.evidence}</p></div>)}</CardContent></Card>
   </div>;
 }
 
@@ -372,32 +387,44 @@ export function SandboxApp() {
   const [progress, setProgress] = useState(100);
   const [completedSteps, setCompletedSteps] = useState(5);
   const [scenarioNotice, setScenarioNotice] = useState('');
+  const [executionMode, setExecutionMode] = useState<'服务端模拟' | '本地降级'>('服务端模拟');
   const [prompt, setPrompt] = useState('市场今天下跌 10%，请分析持有高波动产品的客户，生成三套沟通方案，模拟未来 24 小时的客户群体反应，并告诉我应该优先联系谁。');
 
-  const handleRun = () => {
+  const handleRun = async () => {
     if (running) return;
     setRunning(true); setProgress(0); setCompletedSteps(0);
-    let tick = 0;
+    const parsed = parseScenarioPrompt(prompt);
+    setScenarioNotice(parsed.defaultedFields.length ? `未识别的参数已使用默认值：${parsed.defaultedFields.join('、')}` : '场景参数已全部从任务描述中识别。');
     const timer = window.setInterval(() => {
-      tick += 1;
-      setProgress(Math.min(96, tick * 4));
-      setCompletedSteps(Math.min(4, Math.floor(tick / 5)));
-      if (tick >= 24) {
-        window.clearInterval(timer);
-        const parsed = parseScenarioPrompt(prompt);
-        const next = runSimulation(parsed.config);
-        setScenarioNotice(parsed.defaultedFields.length ? `未识别的参数已使用默认值：${parsed.defaultedFields.join('、')}` : '场景参数已全部从任务描述中识别。');
-        setResult(next); setProgress(100); setCompletedSteps(5); setRunning(false);
-        fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, result: next }) }).catch(() => undefined);
-      }
-    }, 110);
+      setProgress((value) => Math.min(88, value + 7));
+      setCompletedSteps((value) => Math.min(4, value + 1));
+    }, 240);
+    try {
+      const [response] = await Promise.all([
+        fetch('/api/simulations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed.config) }),
+        new Promise((resolve) => window.setTimeout(resolve, 900)),
+      ]);
+      if (!response.ok) throw new Error('simulation-api-failed');
+      const next = await response.json() as SimulationResult;
+      setExecutionMode('服务端模拟');
+      setResult(next);
+      fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, result: next }) }).catch(() => undefined);
+    } catch {
+      const next = runSimulation(parsed.config);
+      setExecutionMode('本地降级');
+      setScenarioNotice('服务端模拟失败，已使用同版本确定性引擎完成本地降级。');
+      setResult(next);
+    } finally {
+      window.clearInterval(timer);
+      setProgress(100); setCompletedSteps(5); setRunning(false);
+    }
   };
 
   let content;
   if (active === 'customers') content = <CustomerInsights result={result} />;
   else if (active === 'sandbox') content = <SandboxView result={result} />;
   else if (active === 'audit') content = <AuditView result={result} />;
-  else content = <TaskCenter result={result} running={running} progress={progress} completedSteps={completedSteps} prompt={prompt} setPrompt={setPrompt} onRun={handleRun} onNavigate={setActive} scenarioNotice={scenarioNotice} />;
+  else content = <TaskCenter result={result} running={running} progress={progress} completedSteps={completedSteps} prompt={prompt} setPrompt={setPrompt} onRun={handleRun} onNavigate={setActive} scenarioNotice={scenarioNotice} executionMode={executionMode} />;
 
   return <AppShell active={active} onNavigate={setActive} scenario={result.scenario}>{content}</AppShell>;
 }
