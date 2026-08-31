@@ -46,6 +46,42 @@
   --radius-2xl: calc(var(--radius) * 1.55);
 }
 
+@keyframes network-flow {
+  to { stroke-dashoffset: -28; }
+}
+
+@keyframes network-pulse {
+  0%, 100% { opacity: .22; }
+  50% { opacity: .78; }
+}
+
+@keyframes network-risk-ring {
+  0%, 100% { transform: scale(.86); opacity: .18; }
+  50% { transform: scale(1.2); opacity: .5; }
+}
+
+.network-flow {
+  animation: network-flow 1.25s linear infinite;
+}
+
+.network-pulse {
+  animation: network-pulse 1.1s ease-in-out infinite;
+}
+
+.network-risk-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: network-risk-ring 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .network-flow,
+  .network-pulse,
+  .network-risk-ring {
+    animation: none;
+  }
+}
+
 :root {
   --font-app: 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', var(--font-geist-sans), sans-serif;
   --background: oklch(0.975 0.006 245);

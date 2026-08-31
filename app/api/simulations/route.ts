@@ -17,6 +17,7 @@ export async function POST(request: Request) {
     targetSegment: 'high_volatility_drawdown',
   };
   const result = runSimulation(scenario);
+  const persistedStrategies = result.strategies.map(({ customerStates: _customerStates, ...strategy }) => strategy);
   const id = crypto.randomUUID();
   const db = await ensureDatabase();
   await db.prepare(
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     timeSteps,
     JSON.stringify(scenario),
     result.recommended,
-    JSON.stringify({ strategies: result.strategies, findings: result.findings }),
+    JSON.stringify({ strategies: persistedStrategies, findings: result.findings, explanationFactors: result.explanationFactors }),
     Date.now(),
   ).run();
   return Response.json({ id, ...result }, { status: 201 });

@@ -19,7 +19,10 @@ export type Customer = {
   influence: number;
   psychology: Psychology;
   panic: number;
+  buy: number;
+  hold: number;
   sell: number;
+  consult: number;
   complaint: number;
   churn: number;
   priority: '高' | '中' | '低';
@@ -37,12 +40,28 @@ export type RelationshipEdge = {
 export type Snapshot = {
   step: number;
   panic: number;
+  buy: number;
+  hold: number;
   sell: number;
+  consult: number;
   complaint: number;
   churn: number;
   trust: number;
   coverage: number;
   contagion: number;
+};
+
+export type CustomerTimeState = {
+  id: string;
+  panic: number;
+  trust: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  consult: number;
+  complaint: number;
+  churn: number;
+  priority: '高' | '中' | '低';
 };
 
 export type StrategyResult = {
@@ -51,6 +70,7 @@ export type StrategyResult = {
   description: string;
   score: number;
   snapshots: Snapshot[];
+  customerStates: CustomerTimeState[][];
   peakPanic: number;
   finalSell: number;
   finalComplaint: number;
@@ -156,6 +176,20 @@ function logistic(value: number) {
   return 1 / (1 + Math.exp(-value));
 }
 
+function behaviorProbabilities(customer: Customer) {
+  const p = customer.psychology;
+  let sell = clamp(logistic((customer.panic - 0.58) * 5.2 + p.herding * 0.7 - p.discipline * 1.1));
+  let buy = clamp(logistic((0.34 - customer.panic) * 4.4 + p.ambition * 1.2 + p.trust * 0.35) * 0.58);
+  const directionalTotal = buy + sell;
+  if (directionalTotal > 0.94) {
+    buy = (buy / directionalTotal) * 0.94;
+    sell = (sell / directionalTotal) * 0.94;
+  }
+  const hold = clamp(1 - buy - sell);
+  const consult = clamp(logistic((customer.panic - 0.32) * 3.4 + p.trust * 0.65 - p.discipline * 0.25) * 0.72);
+  return { buy, hold, sell, consult };
+}
+
 function pickArchetype(random: () => number) {
   const cursor = random();
   let cumulative = 0;
@@ -196,7 +230,7 @@ export function generateCustomers(count = 300, seed = 20260830): Customer[] {
       0.1 + psychology.lossAversion * 0.35 + psychology.herding * 0.12 + drawdown / 100 - psychology.discipline * 0.18,
     );
     const influence = clamp(random() * 0.68 + psychology.herding * 0.25);
-    return {
+    const initial: Customer = {
       id: `C-${String(1001 + index).padStart(4, '0')}`,
       name: `${surnames[index % surnames.length]}**`,
       archetype: archetype.name,
@@ -206,11 +240,15 @@ export function generateCustomers(count = 300, seed = 20260830): Customer[] {
       influence,
       psychology,
       panic,
+      buy: 0,
+      hold: 0,
       sell: clamp(logistic((panic - 0.55) * 5 - psychology.discipline)),
+      consult: 0,
       complaint: 0,
       churn: 0,
       priority: '低',
     };
+    return { ...initial, ...behaviorProbabilities(initial) };
   });
 }
 
@@ -265,13 +303,14 @@ function runStrategy(
     psychology: { ...customer.psychology },
   }));
   const snapshots: Snapshot[] = [];
+  const customerStates: CustomerTimeState[][] = [];
   const adjacency = buildAdjacency(customers, relationships);
   for (const customer of customers) {
     const p = customer.psychology;
     customer.panic = clamp(
       customer.panic * 0.42 + shockMagnitude * (0.72 + p.lossAversion * 0.78) - p.discipline * 0.05,
     );
-    customer.sell = clamp(logistic((customer.panic - 0.54) * 5.1 + p.herding * 0.55 - p.discipline));
+    Object.assign(customer, behaviorProbabilities(customer));
   }
   let previousMeanPanic = customers.reduce((sum, customer) => sum + customer.panic, 0) / customers.length;
 
@@ -313,7 +352,7 @@ function runStrategy(
           noise,
       );
       p.trust = clamp(p.trust + strategy.trustLift * (0.45 + step / steps) - customer.panic * 0.012);
-      customer.sell = clamp(logistic((customer.panic - 0.58) * 5.2 + p.herding * 0.7 - p.discipline * 1.1));
+      Object.assign(customer, behaviorProbabilities(customer));
       customer.complaint = clamp(logistic((customer.panic - 0.62) * 4.2 - p.trust * 2.3 + strategy.toneRisk * 7) * 0.42);
       customer.churn = clamp(logistic((0.45 - p.trust) * 5 + customer.complaint * 2.2) * 0.38);
       const riskScore = customer.panic * 0.35 + customer.sell * 0.3 + customer.complaint * 0.2 + customer.influence * 0.15;
@@ -326,13 +365,28 @@ function runStrategy(
     snapshots.push({
       step,
       panic: mean((customer) => customer.panic),
+      buy: mean((customer) => customer.buy),
+      hold: mean((customer) => customer.hold),
       sell: mean((customer) => customer.sell),
+      consult: mean((customer) => customer.consult),
       complaint: mean((customer) => customer.complaint),
       churn: mean((customer) => customer.churn),
       trust: mean((customer) => customer.psychology.trust),
       coverage: clamp(strategy.coverage * (0.55 + step / steps * 0.52)),
       contagion: contagionTotal / customers.length,
     });
+    customerStates.push(customers.map((customer) => ({
+      id: customer.id,
+      panic: customer.panic,
+      trust: customer.psychology.trust,
+      buy: customer.buy,
+      hold: customer.hold,
+      sell: customer.sell,
+      consult: customer.consult,
+      complaint: customer.complaint,
+      churn: customer.churn,
+      priority: customer.priority,
+    })));
   }
 
   const last = snapshots[snapshots.length - 1];
@@ -347,6 +401,7 @@ function runStrategy(
       description: strategy.description,
       score,
       snapshots,
+      customerStates,
       peakPanic,
       finalSell: last.sell,
       finalComplaint: last.complaint,

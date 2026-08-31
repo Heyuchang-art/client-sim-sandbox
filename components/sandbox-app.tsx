@@ -29,6 +29,11 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
   XAxis,
   YAxis,
 } from 'recharts';
@@ -69,6 +74,7 @@ import {
   percent,
   runSimulation,
   type Customer,
+  type CustomerTimeState,
   type RelationshipEdge,
   type SimulationResult,
   type StrategyId,
@@ -197,15 +203,29 @@ function MetricCard({ label, value, hint, tone = 'blue' }: { label: string; valu
   );
 }
 
-function PropagationNetwork({ customers, relationships, step }: { customers: Customer[]; relationships: RelationshipEdge[]; step: number }) {
-  const nodes = customers.slice(0, 24).map((customer, index) => {
-    const column = index % 6;
-    const row = Math.floor(index / 6);
-    const x = 58 + column * 104 + ((row % 2) * 24);
-    const y = 44 + row * 66;
-    const intensity = Math.min(1, customer.panic * (0.65 + step * 0.045));
-    const fill = intensity > 0.62 ? '#ef4444' : intensity > 0.46 ? '#f59e0b' : customer.psychology.trust > 0.68 ? '#10b981' : '#3b82f6';
-    return { ...customer, x, y, radius: 6 + customer.influence * 8, fill };
+function PropagationNetwork({ customers, relationships, states, step }: { customers: Customer[]; relationships: RelationshipEdge[]; states?: CustomerTimeState[]; step: number }) {
+  const archetypeCenters: Record<string, { x: number; y: number }> = {
+    稳健守成型: { x: 126, y: 104 },
+    长期成长型: { x: 330, y: 74 },
+    进取交易型: { x: 526, y: 112 },
+    高频敏感型: { x: 222, y: 238 },
+    沉默流失型: { x: 448, y: 240 },
+  };
+  const stateMap = new Map(states?.map((state) => [state.id, state]) ?? []);
+  const sampledCustomers = Object.keys(archetypeCenters).flatMap((archetype) =>
+    customers.filter((customer) => customer.archetype === archetype).slice(0, 9),
+  );
+  const nodes = sampledCustomers.map((customer, index) => {
+    const center = archetypeCenters[customer.archetype];
+    const state = stateMap.get(customer.id);
+    const panic = state?.panic ?? customer.panic;
+    const trust = state?.trust ?? customer.psychology.trust;
+    const angle = ((Number(customer.id.slice(2)) * 47) % 360) * Math.PI / 180 + step * 0.025 * (index % 2 ? 1 : -1);
+    const orbit = 18 + (index % 9) * 3.4 + panic * 9;
+    const x = center.x + Math.cos(angle) * orbit;
+    const y = center.y + Math.sin(angle) * orbit * 0.72;
+    const fill = panic > 0.62 ? '#ef4444' : panic > 0.42 ? '#f59e0b' : trust > 0.68 ? '#10b981' : '#3b82f6';
+    return { ...customer, state, panic, x, y, radius: 4.5 + customer.influence * 6 + panic * 2.4, fill };
   });
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const visibleEdges = relationships.filter((edge) => nodeMap.has(edge.source) && nodeMap.has(edge.target)).slice(0, 42);
@@ -215,20 +235,21 @@ function PropagationNetwork({ customers, relationships, step }: { customers: Cus
     service: { stroke: '#10b981', dash: '4 3' },
   } as const;
   return (
-    <div className="relative min-h-[330px] overflow-hidden rounded-xl border bg-[radial-gradient(circle_at_50%_50%,color-mix(in_oklch,var(--primary)_9%,transparent),transparent_68%),linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] bg-[size:auto,28px_28px,28px_28px]">
-      <svg viewBox="0 0 660 300" className="absolute inset-0 size-full" aria-label="客户群体传播网络">
+    <div className="relative min-h-[350px] overflow-hidden rounded-xl border bg-[radial-gradient(circle_at_50%_50%,color-mix(in_oklch,var(--primary)_9%,transparent),transparent_68%),linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] bg-[size:auto,28px_28px,28px_28px]">
+      <svg viewBox="0 0 660 320" className="absolute inset-0 size-full" aria-label="动态客户群体传播网络">
+        {Object.entries(archetypeCenters).map(([label, center]) => <g key={label}><circle cx={center.x} cy={center.y} r="55" fill="var(--primary)" opacity=".035" stroke="var(--primary)" strokeDasharray="3 5" /><text x={center.x} y={center.y + 61} textAnchor="middle" className="fill-muted-foreground text-[9px]">{label}</text></g>)}
         <g strokeWidth="1.2">
           {visibleEdges.map((edge) => {
             const source = nodeMap.get(edge.source)!;
             const target = nodeMap.get(edge.target)!;
             const style = edgeStyle[edge.type];
-            return <line key={`${edge.source}-${edge.target}-${edge.type}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={style.stroke} strokeDasharray={style.dash} opacity={0.18 + edge.weight * 0.48} />;
+            return <line key={`${edge.source}-${edge.target}-${edge.type}`} className={edge.type === 'service' ? 'network-flow' : edge.type === 'social' ? 'network-pulse' : ''} x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={style.stroke} strokeDasharray={style.dash} opacity={0.18 + edge.weight * 0.48} />;
           })}
         </g>
         {nodes.map((node) => (
-          <g key={node.id}>
-            {node.priority === '高' && <circle cx={node.x} cy={node.y} r={node.radius + 9} fill="none" stroke={node.fill} strokeWidth="2" opacity=".28" />}
-            <circle cx={node.x} cy={node.y} r={node.radius} fill={node.fill} className="drop-shadow-sm" />
+          <g key={node.id} style={{ transform: `translate(${node.x}px, ${node.y}px)`, transition: 'transform 450ms cubic-bezier(.2,.8,.2,1)' }}>
+            {(node.state?.priority ?? node.priority) === '高' && <circle r={node.radius + 9} fill="none" stroke={node.fill} strokeWidth="2" opacity=".35" className="network-risk-ring" />}
+            <circle r={node.radius} fill={node.fill} className="drop-shadow-sm" style={{ transition: 'fill 350ms ease, r 350ms ease' }} />
           </g>
         ))}
       </svg>
@@ -259,6 +280,7 @@ function TaskCenter({ result, running, progress, completedSteps, prompt, setProm
 }) {
   const recommended = result.strategies.find((item) => item.id === result.recommended)!;
   const highRisk = result.customers.filter((customer) => customer.priority === '高').length;
+  const previewStep = Math.min(6, result.scenario.timeSteps);
   return (
     <div className="space-y-5">
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,.8fr)]">
@@ -310,7 +332,7 @@ function TaskCenter({ result, running, progress, completedSteps, prompt, setProm
         </Card>
         <Card>
           <CardHeader><div className="flex items-start justify-between gap-4"><div><CardTitle className="flex items-center gap-2"><UsersRound className="size-4 text-primary" />客户群体传播预览</CardTitle><CardDescription className="mt-1">分群沟通策略 · 时间步 {Math.min(6, result.scenario.timeSteps)} / {result.scenario.timeSteps}</CardDescription></div><Button variant="outline" size="sm" onClick={() => onNavigate('sandbox')}><FlaskConical />进入沙盘</Button></div></CardHeader>
-          <CardContent><div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]"><PropagationNetwork customers={result.customers} relationships={result.relationships} step={Math.min(6, result.scenario.timeSteps)} /><div className="space-y-4">{[
+          <CardContent><div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]"><PropagationNetwork customers={result.customers} relationships={result.relationships} states={recommended.customerStates[previewStep - 1]} step={previewStep} /><div className="space-y-4">{[
             ['恐慌情绪', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].panic, 'text-rose-600'], ['卖出倾向', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].sell, 'text-amber-600'], ['机构信任', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].trust, 'text-emerald-600'], ['触达覆盖', recommended.snapshots[Math.min(5, result.scenario.timeSteps - 1)].coverage, 'text-sky-600'],
           ].map(([label, value, color]) => <div key={label as string}><div className="mb-1.5 flex items-center justify-between text-xs"><span className="text-muted-foreground">{label}</span><span className={`font-mono font-semibold ${color}`}>{percent(value as number, 0)}</span></div><Progress value={(value as number) * 100} /></div>)}<div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800"><span className="font-semibold">关键节点 {result.customers[0].id}</span><br />高影响力、高从众敏感度，建议在第 3 时间步前人工介入。</div></div></div></CardContent>
         </Card>
@@ -321,13 +343,26 @@ function TaskCenter({ result, running, progress, completedSteps, prompt, setProm
 
 function CustomerInsights({ result }: { result: SimulationResult }) {
   const [selectedId, setSelectedId] = useState(result.customers[0].id);
+  const [step, setStep] = useState(Math.min(6, result.scenario.timeSteps));
   const selected = result.customers.find((customer) => customer.id === selectedId) ?? result.customers[0];
+  const recommended = result.strategies.find((item) => item.id === result.recommended)!;
+  const currentState = recommended.customerStates[step - 1].find((state) => state.id === selected.id) ?? recommended.customerStates[step - 1][0];
   const factors = [
     ['损失厌恶', selected.psychology.lossAversion], ['从众敏感', selected.psychology.herding], ['收益追求', selected.psychology.ambition], ['投资纪律', selected.psychology.discipline], ['长期耐心', selected.psychology.patience], ['机构信任', selected.psychology.trust],
   ] as const;
+  const radarData = factors.map(([factor, value]) => ({ factor, value: Math.round(value * 100) }));
+  const behaviors = [
+    ['买入', currentState.buy, 'bg-sky-500'],
+    ['持有', currentState.hold, 'bg-emerald-500'],
+    ['卖出', currentState.sell, 'bg-rose-500'],
+    ['咨询', currentState.consult, 'bg-violet-500'],
+    ['投诉', currentState.complaint, 'bg-amber-500'],
+    ['流失', currentState.churn, 'bg-slate-500'],
+  ] as const;
   return <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,.85fr)]">
     <Card><CardHeader><div className="flex justify-between"><div><CardTitle>高风险客户队列</CardTitle><CardDescription>按行为风险与网络影响力综合排序，数据已脱敏。</CardDescription></div><Badge variant="outline">{result.customerCount} 名客户</Badge></div></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>客户</TableHead><TableHead>原型</TableHead><TableHead>风险等级</TableHead><TableHead>回撤</TableHead><TableHead>恐慌</TableHead><TableHead>优先级</TableHead></TableRow></TableHeader><TableBody>{result.customers.slice(0, 12).map((customer) => <TableRow key={customer.id} onClick={() => setSelectedId(customer.id)} className={`cursor-pointer ${customer.id === selected.id ? 'bg-primary/5' : ''}`}><TableCell><div className="font-medium">{customer.name}</div><div className="text-xs text-muted-foreground">{customer.id}</div></TableCell><TableCell>{customer.archetype}</TableCell><TableCell><Badge variant="outline">{customer.riskLevel}</Badge></TableCell><TableCell className="text-rose-600">-{customer.drawdown}%</TableCell><TableCell>{percent(customer.panic, 0)}</TableCell><TableCell><Badge variant={customer.priority === '高' ? 'destructive' : customer.priority === '中' ? 'secondary' : 'outline'}>{customer.priority}</Badge></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
-    <div className="space-y-5"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle>{selected.name} · {selected.id}</CardTitle><CardDescription>{selected.archetype} · {selected.product}</CardDescription></div><Badge className="bg-rose-500/10 text-rose-700">{selected.priority}优先级</Badge></div></CardHeader><CardContent className="space-y-4">{factors.map(([label, value]) => <div key={label}><div className="mb-1.5 flex justify-between text-xs"><span>{label}</span><span className="font-mono text-muted-foreground">{percent(value, 0)}</span></div><Progress value={value * 100} /></div>)}</CardContent></Card>
+    <div className="space-y-5"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle>{selected.name} · {selected.id}</CardTitle><CardDescription>{selected.archetype} · {selected.product}</CardDescription></div><Badge className="bg-rose-500/10 text-rose-700">{currentState.priority}优先级</Badge></div></CardHeader><CardContent><div className="grid items-center gap-2 sm:grid-cols-[1.1fr_.9fr]"><ChartContainer config={{ value: { label: '性格权重', color: '#2563eb' } }} className="h-[250px] w-full"><RadarChart data={radarData} outerRadius="68%"><PolarGrid /><PolarAngleAxis dataKey="factor" tick={{ fontSize: 10 }} /><PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} /><Radar dataKey="value" stroke="var(--color-value)" fill="var(--color-value)" fillOpacity={0.22} strokeWidth={2} /></RadarChart></ChartContainer><div className="space-y-2.5">{factors.map(([label, value]) => <div key={label}><div className="mb-1 flex justify-between text-[11px]"><span>{label}</span><span className="font-mono text-muted-foreground">{percent(value, 0)}</span></div><Progress value={value * 100} /></div>)}</div></div><p className="mt-2 text-center text-xs text-muted-foreground">点击左侧任一客户，性格结构会即时切换。</p></CardContent></Card>
+      <Card><CardHeader><CardTitle className="flex items-center gap-2"><Activity className="size-4 text-primary" />个体动态行为</CardTitle><CardDescription>{recommended.name} · 时间步 {step}/{result.scenario.timeSteps}</CardDescription></CardHeader><CardContent><div className="grid grid-cols-2 gap-3">{behaviors.map(([label, value, color]) => <div key={label} className="rounded-lg border bg-muted/25 p-3"><div className="flex items-center justify-between text-xs"><span>{label}</span><span className="font-mono font-semibold">{percent(value)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${value * 100}%` }} /></div></div>)}</div><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场冲击</span><span>个体响应</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={result.scenario.timeSteps} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div><div className="mt-3 flex justify-between text-xs"><span>恐慌 {percent(currentState.panic)}</span><span>信任 {percent(currentState.trust)}</span></div></CardContent></Card>
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><Clock3 className="size-4 text-primary" />客户记忆摘要</CardTitle><CardDescription>仅展示业务事实与结构化证据</CardDescription></CardHeader><CardContent className="space-y-3 text-sm"><div className="rounded-lg bg-muted/50 p-3"><p className="font-medium">近 30 日行为</p><p className="mt-1 text-xs leading-5 text-muted-foreground">连续 3 次查看高波动产品净值，未主动咨询；历史回撤超过 10% 时曾快速赎回。</p></div><div className="rounded-lg bg-muted/50 p-3"><p className="font-medium">沟通偏好</p><p className="mt-1 text-xs leading-5 text-muted-foreground">更接受包含量化依据的简短说明；对“立即行动”等强刺激表达敏感。</p></div></CardContent></Card>
     </div>
   </div>;
@@ -356,8 +391,8 @@ function SandboxView({ result }: { result: SimulationResult }) {
   };
   return <div className="space-y-5">
     <div className="grid gap-3 lg:grid-cols-3">{result.strategies.map((item) => <button key={item.id} onClick={() => setStrategy(item.id)} className={`rounded-xl border p-4 text-left transition-all ${strategy === item.id ? 'border-primary bg-primary/5 shadow-sm ring-2 ring-primary/10' : 'bg-card hover:border-primary/30'}`}><div className="flex items-center justify-between"><span className="font-medium">{item.name}</span>{item.id === result.recommended && <Badge>推荐</Badge>}</div><p className="mt-2 text-xs leading-5 text-muted-foreground">{item.description}</p><div className="mt-3 flex items-end justify-between"><span className="text-xs text-muted-foreground">综合得分</span><span className="font-mono text-xl font-semibold">{(item.score * 100).toFixed(1)}</span></div></button>)}</div>
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle className="flex items-center gap-2"><Network className="size-4 text-primary" />群体传播回放</CardTitle><CardDescription>{selected.name} · {scenarioLabel(result.scenario)} · 时间步 {step}/{result.scenario.timeSteps}</CardDescription></div><Button variant="outline" size="sm" onClick={togglePlay}>{playing ? <Pause /> : <Play />}{playing ? '暂停' : '播放'}</Button></div></CardHeader><CardContent><PropagationNetwork customers={result.customers} relationships={result.relationships} step={step} /><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场事件</span><span>机构干预</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={result.scenario.timeSteps} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div></CardContent></Card>
-      <div className="space-y-5"><Card><CardHeader><CardTitle>当前群体状态</CardTitle><CardDescription>时间步 {step} 聚合指标</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3"><MetricCard label="恐慌情绪" value={percent(snapshot.panic)} hint="客户群均值" tone="rose" /><MetricCard label="卖出倾向" value={percent(snapshot.sell)} hint="概率估计" tone="amber" /><MetricCard label="传播强度" value={percent(snapshot.contagion)} hint="邻居状态贡献" tone="violet" /><MetricCard label="机构信任" value={percent(snapshot.trust)} hint="动态更新" tone="emerald" /></CardContent></Card><Alert className="border-amber-200 bg-amber-50 text-amber-900"><TriangleAlert /><AlertTitle>发现群体临界点</AlertTitle><AlertDescription>三类关系网络共 {result.relationships.length} 条边参与传播计算；优先干预高影响节点可降低后续卖出倾向。</AlertDescription></Alert></div>
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle className="flex items-center gap-2"><Network className="size-4 text-primary" />群体传播回放</CardTitle><CardDescription>{selected.name} · {scenarioLabel(result.scenario)} · 时间步 {step}/{result.scenario.timeSteps}</CardDescription></div><Button variant="outline" size="sm" onClick={togglePlay}>{playing ? <Pause /> : <Play />}{playing ? '暂停' : '播放'}</Button></div></CardHeader><CardContent><PropagationNetwork customers={result.customers} relationships={result.relationships} states={selected.customerStates[step - 1]} step={step} /><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场事件</span><span>机构干预</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={result.scenario.timeSteps} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div></CardContent></Card>
+      <div className="space-y-5"><Card><CardHeader><CardTitle>当前群体状态</CardTitle><CardDescription>时间步 {step} 聚合指标</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3"><MetricCard label="恐慌情绪" value={percent(snapshot.panic)} hint="客户群均值" tone="rose" /><MetricCard label="卖出倾向" value={percent(snapshot.sell)} hint="概率估计" tone="amber" /><MetricCard label="传播强度" value={percent(snapshot.contagion)} hint="邻居状态贡献" tone="violet" /><MetricCard label="机构信任" value={percent(snapshot.trust)} hint="动态更新" tone="emerald" /></CardContent></Card><Card><CardHeader><CardTitle>群体行为分布</CardTitle><CardDescription>六类行为倾向随时间步同步更新</CardDescription></CardHeader><CardContent className="space-y-2.5">{[['买入', snapshot.buy], ['持有', snapshot.hold], ['卖出', snapshot.sell], ['咨询', snapshot.consult], ['投诉', snapshot.complaint], ['流失', snapshot.churn]].map(([label, value]) => <div key={label as string}><div className="mb-1 flex justify-between text-xs"><span>{label}</span><span className="font-mono">{percent(value as number)}</span></div><Progress value={(value as number) * 100} /></div>)}</CardContent></Card><Alert className="border-amber-200 bg-amber-50 text-amber-900"><TriangleAlert /><AlertTitle>发现群体临界点</AlertTitle><AlertDescription>三类关系网络共 {result.relationships.length} 条边参与传播计算；优先干预高影响节点可降低后续卖出倾向。</AlertDescription></Alert></div>
     </div>
     <Card><CardHeader><CardTitle>策略恐慌曲线对比</CardTitle><CardDescription>相同客户、市场冲击与随机种子下的对照实验</CardDescription></CardHeader><CardContent><ChartContainer config={chartConfig} className="h-[280px] w-full"><LineChart data={chartData} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}><CartesianGrid vertical={false} strokeDasharray="4 4" /><XAxis dataKey="step" tickLine={false} axisLine={false} /><YAxis tickFormatter={(value) => `${value}%`} domain={[0, 100]} tickLine={false} axisLine={false} width={44} /><ChartTooltip content={<ChartTooltipContent />} />{result.strategies.map((item) => <Line key={item.id} type="monotone" dataKey={item.id} stroke={`var(--color-${item.id})`} strokeWidth={item.id === strategy ? 3 : 1.8} dot={false} />)}</LineChart></ChartContainer></CardContent></Card>
     <Card><CardHeader><CardTitle>结构化因素解释</CardTitle><CardDescription>展示进入决策的因素、权重与证据，不展示原始思维链。</CardDescription></CardHeader><CardContent className="grid gap-3 md:grid-cols-2">{result.explanationFactors.map((factor) => <div key={factor.label} className="rounded-lg border bg-muted/25 p-3"><div className="flex items-center justify-between gap-3"><span className="text-sm font-medium">{factor.label}</span><Badge variant={factor.direction === '风险缓释' ? 'outline' : 'secondary'}>{factor.direction}</Badge></div><div className="mt-2 flex items-center gap-3"><Progress value={factor.weight * 100} /><span className="w-10 text-right font-mono text-xs">{percent(factor.weight, 0)}</span></div><p className="mt-2 text-xs leading-5 text-muted-foreground">{factor.evidence}</p></div>)}</CardContent></Card>
@@ -367,7 +402,8 @@ function SandboxView({ result }: { result: SimulationResult }) {
 function AuditView({ result }: { result: SimulationResult }) {
   const downloadReport = () => {
     const recommended = result.strategies.find((item) => item.id === result.recommended)!;
-    const report = `证券客户行为沙盘 - 策略模拟报告\n\n场景：${scenarioLabel(result.scenario)}\n客户数量：${result.customerCount}\n时间步：${result.scenario.timeSteps}\n随机种子：${result.seed}\n推荐策略：${recommended.name}\n综合得分：${(recommended.score * 100).toFixed(1)}\n恐慌峰值：${percent(recommended.peakPanic)}\n卖出倾向：${percent(recommended.finalSell)}\n投诉风险：${percent(recommended.finalComplaint)}\n流失风险：${percent(recommended.finalChurn)}\n\n说明：本报告为基于合成客户的情景推演，不构成对真实客户行为的绝对预测。`;
+    const finalState = recommended.snapshots.at(-1)!;
+    const report = `证券客户行为沙盘 - 策略模拟报告\n\n场景：${scenarioLabel(result.scenario)}\n客户数量：${result.customerCount}\n时间步：${result.scenario.timeSteps}\n随机种子：${result.seed}\n推荐策略：${recommended.name}\n综合得分：${(recommended.score * 100).toFixed(1)}\n恐慌峰值：${percent(recommended.peakPanic)}\n买入倾向：${percent(finalState.buy)}\n持有倾向：${percent(finalState.hold)}\n卖出倾向：${percent(recommended.finalSell)}\n咨询倾向：${percent(finalState.consult)}\n投诉风险：${percent(recommended.finalComplaint)}\n流失风险：${percent(recommended.finalChurn)}\n\n说明：本报告为基于合成客户的情景推演，不构成对真实客户行为的绝对预测。`;
     const url = URL.createObjectURL(new Blob([report], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url; link.download = '证券客户行为沙盘-策略模拟报告.txt'; link.click(); URL.revokeObjectURL(url);
