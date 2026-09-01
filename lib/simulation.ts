@@ -64,6 +64,34 @@ export type CustomerTimeState = {
   priority: '高' | '中' | '低';
 };
 
+export type MacroCommunicationPlan = {
+  objective: string;
+  targetAudience: string;
+  channels: string[];
+  cadence: string;
+  owner: string;
+  escalationRule: string;
+  guardrail: string;
+  phases: Array<{
+    name: string;
+    window: string;
+    action: string;
+  }>;
+};
+
+export type MicroCommunicationPlan = {
+  urgency: '立即' | '优先' | '常规';
+  objective: string;
+  channel: string;
+  timing: string;
+  tone: string;
+  opening: string;
+  keyPoints: string[];
+  recommendedMessage: string;
+  avoid: string;
+  evidence: string[];
+};
+
 export type StrategyResult = {
   id: StrategyId;
   name: string;
@@ -77,6 +105,7 @@ export type StrategyResult = {
   finalChurn: number;
   finalTrust: number;
   complianceRisk: '低' | '中' | '高';
+  macroPlan: MacroCommunicationPlan;
 };
 
 export type SimulationResult = {
@@ -147,6 +176,105 @@ export const strategyDefinitions: Array<{
     toneRisk: 0,
   },
 ];
+
+function buildMacroCommunicationPlan(strategy: (typeof strategyDefinitions)[number], scenario: ScenarioConfig): MacroCommunicationPlan {
+  const shock = `${Math.abs(scenario.marketShock * 100).toFixed(0)}%`;
+  if (strategy.id === 'baseline') {
+    return {
+      objective: `在市场下跌 ${shock} 的情况下维持被动服务，保留资源应对客户主动咨询。`,
+      targetAudience: '主动咨询、投诉或触发风险阈值的客户',
+      channels: ['客服热线', 'App 在线客服'],
+      cadence: '事件触发后响应，不主动批量触达',
+      owner: '客服团队',
+      escalationRule: '投诉风险超过 25% 或流失风险超过 20% 时转客户经理',
+      guardrail: '不得因未主动触达而遗漏已触发适当性风险的客户',
+      phases: [
+        { name: '监测', window: '0—2 小时', action: '持续监测咨询量、卖出倾向与投诉信号' },
+        { name: '响应', window: '2—8 小时', action: '仅对主动咨询客户提供标准风险说明' },
+        { name: '复核', window: '8—24 小时', action: '复核高风险未触达客户并决定是否升级' },
+      ],
+    };
+  }
+  if (strategy.id === 'broadcast') {
+    return {
+      objective: `快速覆盖市场下跌 ${shock} 的目标客群，统一解释风险并降低信息真空。`,
+      targetAudience: '持有高波动产品的全部目标客户',
+      channels: ['App 推送', '短信', '企业微信'],
+      cadence: '首轮立即触达，4 小时后根据风险变化补充一次',
+      owner: '客户运营团队',
+      escalationRule: '未读且恐慌超过 62% 的客户转人工；投诉倾向超过 25% 立即暂停自动触达',
+      guardrail: '统一文案仅作风险说明，不包含收益承诺、行动催促或产品推荐',
+      phases: [
+        { name: '定调', window: '0—1 小时', action: '发布统一市场说明，明确风险与服务入口' },
+        { name: '覆盖', window: '1—6 小时', action: '完成多渠道覆盖并监测打开、咨询和投诉' },
+        { name: '分流', window: '6—24 小时', action: '把持续高风险客户分流至人工服务' },
+      ],
+    };
+  }
+  return {
+    objective: `针对市场下跌 ${shock} 实施分群干预，优先稳定高恐慌、高影响力客户并抑制情绪扩散。`,
+    targetAudience: '高恐慌、高影响力、低信任及高流失倾向客户优先',
+    channels: ['客户经理电话', '企业微信', 'App 个性化消息'],
+    cadence: '高优客户 30 分钟内触达，中优客户 2 小时内触达，状态恶化时二次跟进',
+    owner: '客户经理牵头，投顾与合规协同',
+    escalationRule: '恐慌超过 62%、投诉超过 25% 或高影响节点持续恶化时立即人工接管',
+    guardrail: '话术必须与客户风险等级匹配；涉及具体操作与产品时需人工确认',
+    phases: [
+      { name: '止扩散', window: '0—2 小时', action: '锁定关键传播节点，先人工干预高风险高影响客户' },
+      { name: '分群稳定', window: '2—8 小时', action: '按心理特征、风险等级和沟通偏好差异化触达' },
+      { name: '回访校准', window: '8—24 小时', action: '依据状态变化二次跟进，并回流真实反馈校准模型' },
+    ],
+  };
+}
+
+export function buildMicroCommunicationPlan(
+  customer: Customer,
+  state: CustomerTimeState,
+  scenario: ScenarioConfig,
+): MicroCommunicationPlan {
+  const p = customer.psychology;
+  const urgency: MicroCommunicationPlan['urgency'] =
+    state.priority === '高' || state.panic > 0.62 || state.complaint > 0.25 ? '立即' :
+      state.priority === '中' || state.panic > 0.42 || state.churn > 0.18 ? '优先' : '常规';
+  const lowTrust = state.trust < 0.45;
+  const lossSensitive = p.lossAversion >= Math.max(p.herding, p.ambition, p.discipline, p.patience);
+  const herdSensitive = p.herding > 0.68;
+  const channel = urgency === '立即' || lowTrust ? '客户经理电话' : state.consult > 0.35 ? '企业微信一对一' : 'App 个性化消息';
+  const timing = urgency === '立即' ? '30 分钟内人工触达' : urgency === '优先' ? '2 小时内触达并在 4 小时后复核' : '本时段内轻量触达，次日回访';
+  const tone = lowTrust ? '坦诚、可核验、避免说教' : lossSensitive ? '先共情，再给事实和选择空间' : herdSensitive ? '稳定、去从众、强调独立判断' : '简洁、理性、尊重客户节奏';
+  const objective = state.panic > 0.55 ? '先稳定情绪并阻断冲动决策' : state.churn > 0.18 ? '修复信任并确认服务诉求' : state.consult > 0.3 ? '解答疑问并帮助客户重新核对风险承受能力' : '主动提供信息，保持服务连续性';
+  const marketDrop = Math.abs(scenario.marketShock * 100).toFixed(0);
+  const archetypeAdvice = customer.archetype.includes('稳健')
+    ? '重点说明当前波动与其稳健目标是否仍匹配，不主动推介高风险产品。'
+    : customer.archetype.includes('成长')
+      ? '把短期波动放回原定投资期限讨论，同时确认其资金使用安排是否变化。'
+      : customer.archetype.includes('高频') || customer.archetype.includes('进取')
+        ? '用明确数据回应，不强化短期交易冲动，提醒交易成本与风险边界。'
+        : '先询问近期资金安排和服务感受，避免连续自动消息加剧流失。';
+  const opening = `${customer.name}您好，我注意到今天市场波动较大，也看到您持有的${customer.product}出现了回撤，想先了解一下您现在最担心的是短期亏损、资金安排，还是后续市场变化？`;
+  const recommendedMessage = `${opening} 今天市场整体下跌约 ${marketDrop}%，短期波动可能放大情绪和交易压力。我们可以先一起核对这项持仓的风险特征、您的原定投资期限和当前资金需求，再由您决定下一步。${archetypeAdvice}我不会催促您立即操作，也无法承诺收益；如果您愿意，我可以把关键数据和可选处理方式逐项说明。`;
+  const evidence = [
+    `当前恐慌 ${percent(state.panic)}、卖出倾向 ${percent(state.sell)}`,
+    `机构信任 ${percent(state.trust)}、流失倾向 ${percent(state.churn)}`,
+    `${lossSensitive ? '损失厌恶' : herdSensitive ? '从众敏感' : '行为画像'}是本次沟通的主要心理依据`,
+  ];
+  return {
+    urgency,
+    objective,
+    channel,
+    timing,
+    tone,
+    opening,
+    keyPoints: [
+      '先确认客户最关心的问题，不预设其必须买入、持有或卖出。',
+      archetypeAdvice,
+      '说明市场和产品风险，必要时转交具备相应资质的人员继续服务。',
+    ],
+    recommendedMessage,
+    avoid: '避免使用“必须立即操作”“肯定会反弹”“现在卖出一定亏”等诱导、承诺或替客户决策的表达。',
+    evidence,
+  };
+}
 
 const archetypes = [
   { name: '稳健守成型', weight: 0.27, risk: 'C2' as const },
@@ -408,6 +536,7 @@ function runStrategy(
       finalChurn: last.churn,
       finalTrust: last.trust,
       complianceRisk: strategy.id === 'broadcast' ? '中' : strategy.id === 'baseline' ? '低' : '低',
+      macroPlan: buildMacroCommunicationPlan(strategy, scenario),
     },
     customers,
   };
@@ -495,7 +624,7 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario): Simul
       { time: '13:45:04', actor: 'CustomerQueryTool', action: '筛选目标客户', result: `命中 ${customerCount} 名脱敏客户` },
       { time: '13:45:07', actor: 'ProfileTool', action: '构建行为画像', result: '5 类原型、6 个心理因素' },
       { time: '13:45:09', actor: 'RelationshipTool', action: '构建客户关系网络', result: `${relationships.length} 条关系边、3 类传播通道` },
-      { time: '13:45:10', actor: 'StrategyTool', action: '生成候选策略', result: '3 套策略通过结构校验' },
+      { time: '13:45:10', actor: 'StrategyTool', action: '生成宏观与微观沟通策略', result: '3 套宏观策略通过结构校验，并按客户状态生成一人一策' },
       { time: '13:45:13', actor: 'SimulationTool', action: '执行群体模拟', result: `${steps} 个时间步、市场冲击 ${(scenario.marketShock * 100).toFixed(0)}%、随机种子 ${seed}` },
       { time: '13:45:28', actor: 'PolicyGateway', action: '合规审查', result: '1 项阻断、1 项待审批' },
     ],

@@ -5,6 +5,7 @@ import {
   Activity,
   BadgeCheck,
   BrainCircuit,
+  ClipboardCopy,
   CheckCircle2,
   ChevronRight,
   CircleUserRound,
@@ -15,12 +16,14 @@ import {
   LayoutDashboard,
   LoaderCircle,
   Network,
+  Megaphone,
   Pause,
   Play,
   Search,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Target,
   TriangleAlert,
   UserRoundCheck,
   UsersRound,
@@ -71,6 +74,7 @@ import {
   type ScenarioConfig,
 } from '@/lib/scenario';
 import {
+  buildMicroCommunicationPlan,
   percent,
   runSimulation,
   type Customer,
@@ -92,7 +96,7 @@ const nav = [
 const plan = [
   ['识别目标客户', '筛选持有高波动产品且近期回撤超过 8% 的客户'],
   ['构建行为画像', '聚合风险等级、心理参数与历史服务记忆'],
-  ['生成候选策略', '形成不干预、统一提示、分群沟通三套方案'],
+  ['生成双层策略', '形成宏观处置方案，并为每位客户生成一人一策与个性化话术'],
   ['运行群体模拟', '按结构化 ScenarioConfig 执行客户群体传播'],
   ['完成合规审查', '适当性、误导性表达与人工审批检查'],
 ] as const;
@@ -347,6 +351,7 @@ function CustomerInsights({ result }: { result: SimulationResult }) {
   const selected = result.customers.find((customer) => customer.id === selectedId) ?? result.customers[0];
   const recommended = result.strategies.find((item) => item.id === result.recommended)!;
   const currentState = recommended.customerStates[step - 1].find((state) => state.id === selected.id) ?? recommended.customerStates[step - 1][0];
+  const microPlan = buildMicroCommunicationPlan(selected, currentState, result.scenario);
   const factors = [
     ['损失厌恶', selected.psychology.lossAversion], ['从众敏感', selected.psychology.herding], ['收益追求', selected.psychology.ambition], ['投资纪律', selected.psychology.discipline], ['长期耐心', selected.psychology.patience], ['机构信任', selected.psychology.trust],
   ] as const;
@@ -363,6 +368,27 @@ function CustomerInsights({ result }: { result: SimulationResult }) {
     <Card><CardHeader><div className="flex justify-between"><div><CardTitle>高风险客户队列</CardTitle><CardDescription>按行为风险与网络影响力综合排序，数据已脱敏。</CardDescription></div><Badge variant="outline">{result.customerCount} 名客户</Badge></div></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>客户</TableHead><TableHead>原型</TableHead><TableHead>风险等级</TableHead><TableHead>回撤</TableHead><TableHead>恐慌</TableHead><TableHead>优先级</TableHead></TableRow></TableHeader><TableBody>{result.customers.slice(0, 12).map((customer) => <TableRow key={customer.id} onClick={() => setSelectedId(customer.id)} className={`cursor-pointer ${customer.id === selected.id ? 'bg-primary/5' : ''}`}><TableCell><div className="font-medium">{customer.name}</div><div className="text-xs text-muted-foreground">{customer.id}</div></TableCell><TableCell>{customer.archetype}</TableCell><TableCell><Badge variant="outline">{customer.riskLevel}</Badge></TableCell><TableCell className="text-rose-600">-{customer.drawdown}%</TableCell><TableCell>{percent(customer.panic, 0)}</TableCell><TableCell><Badge variant={customer.priority === '高' ? 'destructive' : customer.priority === '中' ? 'secondary' : 'outline'}>{customer.priority}</Badge></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
     <div className="space-y-5"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle>{selected.name} · {selected.id}</CardTitle><CardDescription>{selected.archetype} · {selected.product}</CardDescription></div><Badge className="bg-rose-500/10 text-rose-700">{currentState.priority}优先级</Badge></div></CardHeader><CardContent><div className="grid items-center gap-2 sm:grid-cols-[1.1fr_.9fr]"><ChartContainer config={{ value: { label: '性格权重', color: '#2563eb' } }} className="h-[250px] w-full"><RadarChart data={radarData} outerRadius="68%"><PolarGrid /><PolarAngleAxis dataKey="factor" tick={{ fontSize: 10 }} /><PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} /><Radar dataKey="value" stroke="var(--color-value)" fill="var(--color-value)" fillOpacity={0.22} strokeWidth={2} /></RadarChart></ChartContainer><div className="space-y-2.5">{factors.map(([label, value]) => <div key={label}><div className="mb-1 flex justify-between text-[11px]"><span>{label}</span><span className="font-mono text-muted-foreground">{percent(value, 0)}</span></div><Progress value={value * 100} /></div>)}</div></div><p className="mt-2 text-center text-xs text-muted-foreground">点击左侧任一客户，性格结构会即时切换。</p></CardContent></Card>
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><Activity className="size-4 text-primary" />个体动态行为</CardTitle><CardDescription>{recommended.name} · 时间步 {step}/{result.scenario.timeSteps}</CardDescription></CardHeader><CardContent><div className="grid grid-cols-2 gap-3">{behaviors.map(([label, value, color]) => <div key={label} className="rounded-lg border bg-muted/25 p-3"><div className="flex items-center justify-between text-xs"><span>{label}</span><span className="font-mono font-semibold">{percent(value)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${value * 100}%` }} /></div></div>)}</div><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场冲击</span><span>个体响应</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={result.scenario.timeSteps} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div><div className="mt-3 flex justify-between text-xs"><span>恐慌 {percent(currentState.panic)}</span><span>信任 {percent(currentState.trust)}</span></div></CardContent></Card>
+      <Card className="overflow-hidden border-primary/20">
+        <div className="border-b bg-primary/[.045] px-6 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div><CardTitle className="flex items-center gap-2"><Target className="size-4 text-primary" />一人一策 · 微观沟通建议</CardTitle><CardDescription className="mt-1">随客户、心理状态和时间步动态更新</CardDescription></div>
+            <div className="flex gap-2"><Badge variant={microPlan.urgency === '立即' ? 'destructive' : microPlan.urgency === '优先' ? 'secondary' : 'outline'}>{microPlan.urgency}触达</Badge><Badge variant="outline">{microPlan.channel}</Badge></div>
+          </div>
+        </div>
+        <CardContent className="space-y-4 pt-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg bg-muted/45 p-3"><p className="text-[11px] text-muted-foreground">沟通目标</p><p className="mt-1 text-sm font-medium leading-5">{microPlan.objective}</p></div>
+            <div className="rounded-lg bg-muted/45 p-3"><p className="text-[11px] text-muted-foreground">时机与语气</p><p className="mt-1 text-sm font-medium leading-5">{microPlan.timing}</p><p className="mt-1 text-xs text-muted-foreground">{microPlan.tone}</p></div>
+          </div>
+          <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4">
+            <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-sky-950">建议话术</p><Button variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(microPlan.recommendedMessage)}><ClipboardCopy />复制话术</Button></div>
+            <p className="mt-3 text-sm leading-7 text-sky-950">{microPlan.recommendedMessage}</p>
+          </div>
+          <div><p className="mb-2 text-xs font-semibold">沟通要点</p><div className="space-y-2">{microPlan.keyPoints.map((point) => <div key={point} className="flex gap-2 text-xs leading-5 text-muted-foreground"><CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" /><span>{point}</span></div>)}</div></div>
+          <Alert className="border-amber-200 bg-amber-50 text-amber-900"><ShieldAlert /><AlertTitle>话术红线</AlertTitle><AlertDescription>{microPlan.avoid}</AlertDescription></Alert>
+          <div className="flex flex-wrap gap-2">{microPlan.evidence.map((item) => <Badge key={item} variant="outline" className="font-normal">{item}</Badge>)}</div>
+        </CardContent>
+      </Card>
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><Clock3 className="size-4 text-primary" />客户记忆摘要</CardTitle><CardDescription>仅展示业务事实与结构化证据</CardDescription></CardHeader><CardContent className="space-y-3 text-sm"><div className="rounded-lg bg-muted/50 p-3"><p className="font-medium">近 30 日行为</p><p className="mt-1 text-xs leading-5 text-muted-foreground">连续 3 次查看高波动产品净值，未主动咨询；历史回撤超过 10% 时曾快速赎回。</p></div><div className="rounded-lg bg-muted/50 p-3"><p className="font-medium">沟通偏好</p><p className="mt-1 text-xs leading-5 text-muted-foreground">更接受包含量化依据的简短说明；对“立即行动”等强刺激表达敏感。</p></div></CardContent></Card>
     </div>
   </div>;
@@ -374,6 +400,8 @@ function SandboxView({ result }: { result: SimulationResult }) {
   const [playing, setPlaying] = useState(false);
   const selected = result.strategies.find((item) => item.id === strategy)!;
   const snapshot = selected.snapshots[step - 1];
+  const macroPlan = selected.macroPlan;
+  const activePhase = Math.min(2, Math.floor(((step - 1) / result.scenario.timeSteps) * 3));
   const chartData = selected.snapshots.map((_, index) => {
     const row: Record<string, number> = { step: index + 1 };
     result.strategies.forEach((item) => { row[item.id] = item.snapshots[index].panic * 100; });
@@ -394,6 +422,21 @@ function SandboxView({ result }: { result: SimulationResult }) {
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle className="flex items-center gap-2"><Network className="size-4 text-primary" />群体传播回放</CardTitle><CardDescription>{selected.name} · {scenarioLabel(result.scenario)} · 时间步 {step}/{result.scenario.timeSteps}</CardDescription></div><Button variant="outline" size="sm" onClick={togglePlay}>{playing ? <Pause /> : <Play />}{playing ? '暂停' : '播放'}</Button></div></CardHeader><CardContent><PropagationNetwork customers={result.customers} relationships={result.relationships} states={selected.customerStates[step - 1]} step={step} /><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场事件</span><span>机构干预</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={result.scenario.timeSteps} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div></CardContent></Card>
       <div className="space-y-5"><Card><CardHeader><CardTitle>当前群体状态</CardTitle><CardDescription>时间步 {step} 聚合指标</CardDescription></CardHeader><CardContent className="grid grid-cols-2 gap-3"><MetricCard label="恐慌情绪" value={percent(snapshot.panic)} hint="客户群均值" tone="rose" /><MetricCard label="卖出倾向" value={percent(snapshot.sell)} hint="概率估计" tone="amber" /><MetricCard label="传播强度" value={percent(snapshot.contagion)} hint="邻居状态贡献" tone="violet" /><MetricCard label="机构信任" value={percent(snapshot.trust)} hint="动态更新" tone="emerald" /></CardContent></Card><Card><CardHeader><CardTitle>群体行为分布</CardTitle><CardDescription>六类行为倾向随时间步同步更新</CardDescription></CardHeader><CardContent className="space-y-2.5">{[['买入', snapshot.buy], ['持有', snapshot.hold], ['卖出', snapshot.sell], ['咨询', snapshot.consult], ['投诉', snapshot.complaint], ['流失', snapshot.churn]].map(([label, value]) => <div key={label as string}><div className="mb-1 flex justify-between text-xs"><span>{label}</span><span className="font-mono">{percent(value as number)}</span></div><Progress value={(value as number) * 100} /></div>)}</CardContent></Card><Alert className="border-amber-200 bg-amber-50 text-amber-900"><TriangleAlert /><AlertTitle>发现群体临界点</AlertTitle><AlertDescription>三类关系网络共 {result.relationships.length} 条边参与传播计算；优先干预高影响节点可降低后续卖出倾向。</AlertDescription></Alert></div>
     </div>
+    <Card className="overflow-hidden border-primary/20">
+      <div className="border-b bg-primary/[.045] px-6 py-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><Megaphone className="size-4 text-primary" />宏观沟通指挥方案</CardTitle><CardDescription className="mt-1">整体处置原则、节奏与分阶段动作</CardDescription></div><div className="flex gap-2"><Badge>{selected.name}</Badge><Badge variant="outline">群体策略层</Badge></div></div></div>
+      <CardContent className="pt-5">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]">
+          <div>
+            <p className="text-sm font-medium leading-6">{macroPlan.objective}</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">{macroPlan.phases.map((phase, index) => <div key={phase.name} className={`rounded-xl border p-3 transition-colors ${index === activePhase ? 'border-primary bg-primary/5 ring-2 ring-primary/10' : 'bg-muted/20'}`}><div className="flex items-center justify-between gap-2"><span className="text-sm font-semibold">{index + 1}. {phase.name}</span>{index === activePhase && <Badge>当前阶段</Badge>}</div><p className="mt-1 font-mono text-[11px] text-primary">{phase.window}</p><p className="mt-2 text-xs leading-5 text-muted-foreground">{phase.action}</p></div>)}</div>
+          </div>
+          <div className="space-y-3 rounded-xl border bg-muted/25 p-4 text-xs">
+            {[['目标客群', macroPlan.targetAudience], ['触达渠道', macroPlan.channels.join('、')], ['沟通节奏', macroPlan.cadence], ['责任主体', macroPlan.owner], ['升级规则', macroPlan.escalationRule]].map(([label, value]) => <div key={label} className="grid grid-cols-[64px_1fr] gap-3"><span className="text-muted-foreground">{label}</span><span className="leading-5">{value}</span></div>)}
+            <div className="border-t pt-3"><p className="font-medium text-amber-700">合规边界</p><p className="mt-1 leading-5 text-muted-foreground">{macroPlan.guardrail}</p></div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
     <Card><CardHeader><CardTitle>策略恐慌曲线对比</CardTitle><CardDescription>相同客户、市场冲击与随机种子下的对照实验</CardDescription></CardHeader><CardContent><ChartContainer config={chartConfig} className="h-[280px] w-full"><LineChart data={chartData} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}><CartesianGrid vertical={false} strokeDasharray="4 4" /><XAxis dataKey="step" tickLine={false} axisLine={false} /><YAxis tickFormatter={(value) => `${value}%`} domain={[0, 100]} tickLine={false} axisLine={false} width={44} /><ChartTooltip content={<ChartTooltipContent />} />{result.strategies.map((item) => <Line key={item.id} type="monotone" dataKey={item.id} stroke={`var(--color-${item.id})`} strokeWidth={item.id === strategy ? 3 : 1.8} dot={false} />)}</LineChart></ChartContainer></CardContent></Card>
     <Card><CardHeader><CardTitle>结构化因素解释</CardTitle><CardDescription>展示进入决策的因素、权重与证据，不展示原始思维链。</CardDescription></CardHeader><CardContent className="grid gap-3 md:grid-cols-2">{result.explanationFactors.map((factor) => <div key={factor.label} className="rounded-lg border bg-muted/25 p-3"><div className="flex items-center justify-between gap-3"><span className="text-sm font-medium">{factor.label}</span><Badge variant={factor.direction === '风险缓释' ? 'outline' : 'secondary'}>{factor.direction}</Badge></div><div className="mt-2 flex items-center gap-3"><Progress value={factor.weight * 100} /><span className="w-10 text-right font-mono text-xs">{percent(factor.weight, 0)}</span></div><p className="mt-2 text-xs leading-5 text-muted-foreground">{factor.evidence}</p></div>)}</CardContent></Card>
   </div>;
