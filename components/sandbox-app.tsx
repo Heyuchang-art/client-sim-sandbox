@@ -174,7 +174,10 @@ function AppShell({
           <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-card/85 px-4 backdrop-blur md:px-8">
             <div>
               <p className="text-xs font-medium text-muted-foreground">{activeItem.label}</p>
-              <h1 className="font-heading text-base font-semibold">市场下跌 {(Math.abs(scenario.marketShock) * 100).toFixed(0)}% 客户群体压力测试</h1>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <h1 className="font-heading text-base font-semibold">客户群体行为压力预演</h1>
+                <Badge variant="secondary" className="hidden sm:inline-flex">市场下跌 {(Math.abs(scenario.marketShock) * 100).toFixed(0)}%</Badge>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="hidden sm:inline-flex">{scenario.durationHours} 小时 · 种子 {scenario.seed}</Badge>
