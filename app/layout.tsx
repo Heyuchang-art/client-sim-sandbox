@@ -15,6 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: '证券客户行为沙盘 | ClientSim Agent',
   description: '在客户策略触达前，完成行为预演、群体风险识别与合规审查。',
+  icons: { icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }] },
   openGraph: {
     title: '证券客户行为沙盘',
     description: '暴跌行情下的客户群体传播模拟、策略预演与合规审计。',

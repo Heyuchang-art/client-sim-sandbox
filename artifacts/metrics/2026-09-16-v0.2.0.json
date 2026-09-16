@@ -1,0 +1,355 @@
+{
+  "generatedAt": "2026-09-16T03:49:46.484Z",
+  "version": "0.2.0",
+  "ruleVersion": "compliance-rules@2026.09",
+  "environment": {
+    "node": "v24.16.0",
+    "platform": "win32",
+    "modelConfigured": false
+  },
+  "thresholds": {
+    "planSuccessRate": {
+      "value": 0.9,
+      "comparator": ">=",
+      "label": "规划与工具调用成功率"
+    },
+    "engineMs": {
+      "value": 30000,
+      "comparator": "<=",
+      "label": "300×10 引擎耗时上限（毫秒）"
+    },
+    "sseFirstFrameMs": {
+      "value": 2000,
+      "comparator": "<=",
+      "label": "SSE 首帧上限（毫秒）"
+    },
+    "complianceRecall": {
+      "value": 0.95,
+      "comparator": ">=",
+      "label": "合规召回率"
+    },
+    "complianceFalseBlock": {
+      "value": 0.1,
+      "comparator": "<=",
+      "label": "合规误拦截率"
+    }
+  },
+  "engine": [
+    {
+      "label": "300×10",
+      "customers": 300,
+      "timeSteps": 10,
+      "seed": 20260830,
+      "runs": [
+        23.48,
+        21.69,
+        11.97,
+        16.97,
+        9.11
+      ],
+      "medianMs": 16.97,
+      "aggregateHash": "d891c721c0a99205",
+      "peakPanic": 0.0257,
+      "finalSell": 0.0371,
+      "finalChurn": 0.023
+    },
+    {
+      "label": "1000×20",
+      "customers": 1000,
+      "timeSteps": 20,
+      "seed": 20260830,
+      "runs": [
+        83.16,
+        113.58,
+        78.31
+      ],
+      "medianMs": 83.16,
+      "aggregateHash": "db0cda231f8f9240",
+      "peakPanic": 0.0278,
+      "finalSell": 0.0385,
+      "finalChurn": 0.023
+    }
+  ],
+  "determinism": {
+    "repeats": 5,
+    "identical": true,
+    "hash": "d891c721c0a99205"
+  },
+  "shockSensitivity": [
+    {
+      "shock": 0.1,
+      "recommended": "segmented",
+      "peakPanic": 0.0257,
+      "finalSell": 0.0371,
+      "finalChurn": 0.023,
+      "baselinePeakPanic": 0.1954,
+      "baselineFinalSell": 0.0506,
+      "baselineFinalChurn": 0.2827,
+      "peakStep": 1
+    },
+    {
+      "shock": 0.2,
+      "recommended": "segmented",
+      "peakPanic": 0.1805,
+      "finalSell": 0.0371,
+      "finalChurn": 0.023,
+      "baselinePeakPanic": 0.3667,
+      "baselineFinalSell": 0.103,
+      "baselineFinalChurn": 0.2911,
+      "peakStep": 1
+    },
+    {
+      "shock": 0.3,
+      "recommended": "segmented",
+      "peakPanic": 0.3612,
+      "finalSell": 0.0371,
+      "finalChurn": 0.023,
+      "baselinePeakPanic": 0.5474,
+      "baselineFinalSell": 0.2269,
+      "baselineFinalChurn": 0.3026,
+      "peakStep": 1
+    }
+  ],
+  "shockMonotonic": true,
+  "durationSensitivity": [
+    {
+      "durationHours": 24,
+      "stepHours": 2.4,
+      "peakPanic": 0.1954,
+      "peakStep": 1,
+      "finalSell": 0.0506
+    },
+    {
+      "durationHours": 48,
+      "stepHours": 4.8,
+      "peakPanic": 0.2015,
+      "peakStep": 1,
+      "finalSell": 0.0618
+    },
+    {
+      "durationHours": 72,
+      "stepHours": 7.2,
+      "peakPanic": 0.205,
+      "peakStep": 1,
+      "finalSell": 0.07
+    }
+  ],
+  "durationDirectional": true,
+  "segment": {
+    "criteria": "持有高波动产品、在 10% 基准冲击下回撤不低于 8% 的客户（客群口径跨情景稳定）",
+    "generated": 600,
+    "matched": 300,
+    "excluded": 218,
+    "relaxed": false,
+    "reproducibility": true
+  },
+  "ablations": [
+    {
+      "name": "disablePsychology",
+      "peakPanic": 0.177,
+      "finalSell": 0.0436,
+      "finalChurn": 0.3161,
+      "deltaPeakPanic": -0.0183,
+      "deltaFinalSell": -0.007
+    },
+    {
+      "name": "disableContagion",
+      "peakPanic": 0.1675,
+      "finalSell": 0.0459,
+      "finalChurn": 0.2816,
+      "deltaPeakPanic": -0.0278,
+      "deltaFinalSell": -0.0047
+    },
+    {
+      "name": "disableMemory",
+      "peakPanic": 0.0582,
+      "finalSell": 0.0405,
+      "finalChurn": 0.2729,
+      "deltaPeakPanic": -0.1372,
+      "deltaFinalSell": -0.0101
+    },
+    {
+      "name": "disableCompliance",
+      "peakPanic": 0.1954,
+      "finalSell": 0.0506,
+      "finalChurn": 0.2827,
+      "deltaPeakPanic": 0,
+      "deltaFinalSell": 0
+    }
+  ],
+  "modes": [
+    {
+      "mode": "llm-only",
+      "label": "仅模型（无模拟）",
+      "source": "rule",
+      "ranking": [
+        "broadcast",
+        "segmented",
+        "baseline"
+      ],
+      "recommended": "broadcast",
+      "rankAgreement": 0.6667,
+      "stability": 1,
+      "latencyMs": 0,
+      "peakPanic": null,
+      "finalSell": null,
+      "finalChurn": null,
+      "engineMs": null,
+      "retrieved": [],
+      "note": "无模型密钥时按内置规则近似：仅依据策略文本线索排序，不运行数值模拟。"
+    },
+    {
+      "mode": "llm-rag",
+      "label": "模型 + 知识检索（无模拟）",
+      "source": "rule",
+      "ranking": [
+        "broadcast",
+        "segmented",
+        "baseline"
+      ],
+      "recommended": "broadcast",
+      "rankAgreement": 0.6667,
+      "stability": 1,
+      "latencyMs": 0,
+      "peakPanic": null,
+      "finalSell": null,
+      "finalChurn": null,
+      "engineMs": null,
+      "retrieved": [
+        "KB-17",
+        "KB-01",
+        "KB-15"
+      ],
+      "note": "无模型密钥时按内置规则近似：以检索到的投教/合规语料覆盖度修正策略排序。"
+    },
+    {
+      "mode": "single-agent",
+      "label": "单智能体（无个体状态与传播）",
+      "source": "rule",
+      "ranking": [
+        "segmented",
+        "broadcast",
+        "baseline"
+      ],
+      "recommended": "segmented",
+      "rankAgreement": 1,
+      "stability": 1,
+      "latencyMs": 27,
+      "peakPanic": 0,
+      "finalSell": 0.0386,
+      "finalChurn": 0.023,
+      "engineMs": 5.96,
+      "retrieved": [],
+      "note": "单一全局智能体：关闭心理层、传播层与记忆层。"
+    },
+    {
+      "mode": "dual-layer",
+      "label": "双层模拟（本方案）",
+      "source": "rule",
+      "ranking": [
+        "segmented",
+        "broadcast",
+        "baseline"
+      ],
+      "recommended": "segmented",
+      "rankAgreement": 1,
+      "stability": 1,
+      "latencyMs": 37,
+      "peakPanic": 0.0257,
+      "finalSell": 0.0371,
+      "finalChurn": 0.023,
+      "engineMs": 11.55,
+      "retrieved": [],
+      "note": "完整双层模拟：心理层 + 传播层 + 记忆层 + 合规层。"
+    }
+  ],
+  "compliance": {
+    "total": 32,
+    "blocked": 11,
+    "review": 10,
+    "clean": 11,
+    "recall": 0.9524,
+    "blockedRecall": 1,
+    "reviewRecall": 0.9,
+    "falseBlockRate": 0,
+    "passed": true,
+    "missed": [
+      "c14(review)"
+    ],
+    "falseBlocked": []
+  },
+  "planEval": {
+    "total": 20,
+    "planSuccessRate": 1,
+    "toolSuccessRate": 1,
+    "scenarioSuccessRate": 1,
+    "passed": true
+  },
+  "server": {
+    "baseUrl": "http://localhost:3000",
+    "sseFirstFrameMs": 360,
+    "endToEndMs": 360
+  },
+  "acceptance": [
+    {
+      "item": "标准任务规划与工具调用成功率",
+      "target": "≥ 90%",
+      "actual": "100.0%",
+      "passed": true
+    },
+    {
+      "item": "300×10 引擎耗时",
+      "target": "< 30000 ms",
+      "actual": "16.97 ms",
+      "passed": true
+    },
+    {
+      "item": "1000×20 引擎耗时",
+      "target": "< 30000 ms",
+      "actual": "83.16 ms",
+      "passed": true
+    },
+    {
+      "item": "同种子完全复现",
+      "target": "签名一致",
+      "actual": "一致",
+      "passed": true
+    },
+    {
+      "item": "跌幅 10%→30% 非反向",
+      "target": "恐慌/卖出/流失不下降",
+      "actual": "单调成立",
+      "passed": true
+    },
+    {
+      "item": "时长 24h→72h 方向一致",
+      "target": "峰值后移或抬升",
+      "actual": "方向一致",
+      "passed": true
+    },
+    {
+      "item": "禁止性合规样例召回",
+      "target": "≥ 95%",
+      "actual": "100.0%",
+      "passed": true
+    },
+    {
+      "item": "待复核样例召回",
+      "target": "记录值",
+      "actual": "90.0%",
+      "passed": true
+    },
+    {
+      "item": "合规误拦截",
+      "target": "≤ 10%",
+      "actual": "0.0%",
+      "passed": true
+    },
+    {
+      "item": "SSE 首帧",
+      "target": "< 2000 ms",
+      "actual": "360 ms",
+      "passed": true
+    }
+  ]
+}

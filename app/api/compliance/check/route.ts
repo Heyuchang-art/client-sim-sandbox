@@ -1,14 +1,35 @@
-const forbidden = [
-  { pattern: /保证收益|稳赚|保本高收益/, rule: 'AD-CONTENT-07', severity: 'blocked' },
-  { pattern: /立即清仓|全部卖出|满仓/, rule: 'SUITABILITY-03', severity: 'review' },
-  { pattern: /内部消息|内幕/, rule: 'MARKET-CONDUCT-02', severity: 'blocked' },
-];
+import { RULE_VERSION, checkText, suitabilityFinding } from '../../../../lib/compliance';
+import { riskLevels, type ComplianceScope, type RiskLevel } from '../../../../lib/compliance/rules';
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as { text?: string };
+  const body = (await request.json()) as {
+    text?: string;
+    scope?: ComplianceScope;
+    strategy?: string;
+    customerRiskLevel?: RiskLevel;
+    product?: string;
+    productRisk?: number;
+  };
   const text = body.text?.trim() ?? '';
-  const findings = forbidden
-    .filter(({ pattern }) => pattern.test(text))
-    .map(({ rule, severity }) => ({ rule, severity, evidence: '命中禁止性或高风险表达' }));
-  return Response.json({ passed: !findings.some((item) => item.severity === 'blocked'), findings });
+  if (!text) return Response.json({ error: '待检文本不能为空。' }, { status: 400 });
+  const scope: ComplianceScope = body.scope === 'strategy' ? 'strategy' : 'message';
+  const verdict = checkText(text, { scope, strategy: body.strategy ?? 'manual-check' });
+
+  const findings = [...verdict.findings];
+  if (body.customerRiskLevel && riskLevels.includes(body.customerRiskLevel) && typeof body.productRisk === 'number') {
+    const suitability = suitabilityFinding(
+      body.strategy ?? 'manual-check',
+      body.customerRiskLevel,
+      body.product ?? '未命名产品',
+      body.productRisk,
+    );
+    if (suitability) findings.push(suitability);
+  }
+
+  return Response.json({
+    passed: !findings.some((finding) => finding.severity === '阻断'),
+    findings,
+    ruleVersion: RULE_VERSION,
+    checkedScope: scope,
+  });
 }

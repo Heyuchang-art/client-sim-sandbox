@@ -1,9 +1,15 @@
 import { ensureDatabase } from '../../../lib/db-runtime';
 import { defaultScenario, type ScenarioConfig } from '../../../lib/scenario';
 import { runSimulation } from '../../../lib/simulation';
+import { createD1Store } from '../../../lib/harness/store';
+import { buildSimulationRecord, buildStepStates } from '../../../lib/harness/persist';
 
+/**
+ * 同步模拟接口：保留给调试、基准测试与本地降级路径使用。
+ * 生产级任务请使用 POST /api/tasks 的异步链路。
+ */
 export async function POST(request: Request) {
-  const body = (await request.json()) as Partial<ScenarioConfig> & { taskId?: string };
+  const body = (await request.json()) as Partial<ScenarioConfig> & { taskId?: string; ablations?: Record<string, boolean> };
   const customerCount = Math.min(1000, Math.max(50, body.customerCount ?? 300));
   const timeSteps = Math.min(20, Math.max(5, body.timeSteps ?? 10));
   const seed = Math.trunc(body.seed ?? 20260830);
@@ -14,26 +20,30 @@ export async function POST(request: Request) {
     customerCount,
     timeSteps,
     seed,
-    targetSegment: 'high_volatility_drawdown',
+    targetSegment: body.targetSegment === 'all_customers' ? 'all_customers' : 'high_volatility_drawdown',
   };
-  const result = runSimulation(scenario);
-  const persistedStrategies = result.strategies.map(({ customerStates: _customerStates, ...strategy }) => strategy);
-  const id = crypto.randomUUID();
+  const startedAt = Date.now();
+  const result = runSimulation(scenario, { ablations: body.ablations });
+  const engineMs = Date.now() - startedAt;
+  const simulationId = crypto.randomUUID();
+  const audit = result.audit.map((entry) => ({ ...entry, at: entry.at ?? Date.now() }));
+
   const db = await ensureDatabase();
-  await db.prepare(
-    `INSERT INTO simulation_runs
-      (id, task_id, seed, customer_count, time_steps, scenario_json, recommended_strategy, summary_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(
-    id,
-    body.taskId ?? null,
-    seed,
-    customerCount,
-    timeSteps,
-    JSON.stringify(scenario),
-    result.recommended,
-    JSON.stringify({ strategies: persistedStrategies, findings: result.findings, explanationFactors: result.explanationFactors }),
-    Date.now(),
-  ).run();
-  return Response.json({ id, ...result }, { status: 201 });
+  const taskId = body.taskId ?? null;
+  const record = buildSimulationRecord({ simulationId, taskId: taskId ?? simulationId, result, audit, model: null, engineMs });
+  const stepStates = buildStepStates(simulationId, result);
+  record.statesTruncated = stepStates.truncated;
+  if (!taskId) {
+    await db
+      .prepare('INSERT INTO tasks (id, prompt, status, mode, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(simulationId, '同步调试模拟', 'succeeded', 'rule', Date.now())
+      .run();
+  }
+
+  const store = await createD1Store();
+  await store.saveSimulation(record);
+  await store.saveStepStates(stepStates.records);
+  await store.saveFindings(simulationId, result.findings);
+
+  return Response.json({ id: simulationId, engineMs, ...result }, { status: 201 });
 }

@@ -1,32 +1,40 @@
 import { ensureDatabase } from '../../../lib/db-runtime';
-
-type TaskPayload = { prompt?: string; result?: unknown };
+import { loadModelConfig } from '../../../lib/model/adapter';
+import { createD1Store } from '../../../lib/harness/store';
+import { runTask } from '../../../lib/harness/runner';
+import { runInBackground } from '../../../lib/harness/scheduler';
+import { readRuntimeEnv } from '../../../lib/harness/env';
 
 export async function GET() {
   const db = await ensureDatabase();
   const { results } = await db.prepare(
-    'SELECT id, prompt, status, result_json AS resultJson, created_at AS createdAt FROM tasks ORDER BY created_at DESC LIMIT 20',
+    `SELECT id, prompt, status, mode, attempt, progress, simulation_id AS simulationId, error_code AS errorCode,
+      model, created_at AS createdAt, started_at AS startedAt, finished_at AS finishedAt
+     FROM tasks ORDER BY created_at DESC LIMIT 20`,
   ).all();
   return Response.json({ tasks: results });
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as TaskPayload;
+  const body = (await request.json()) as { prompt?: string };
   const prompt = body.prompt?.trim();
   if (!prompt || prompt.length > 500) {
     return Response.json({ error: '任务描述须为 1—500 个字符。' }, { status: 400 });
   }
 
-  const db = await ensureDatabase();
+  await ensureDatabase();
+  const store = await createD1Store();
+  const config = loadModelConfig(await readRuntimeEnv());
   const taskId = crypto.randomUUID();
-  const now = Date.now();
-  const resultJson = JSON.stringify(body.result ?? null);
-  await db.batch([
-    db.prepare('INSERT INTO tasks (id, prompt, status, result_json, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(taskId, prompt, 'completed', resultJson, now),
-    db.prepare('INSERT INTO audit_events (id, task_id, actor, action, result, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), taskId, 'analyst_demo', 'task.completed', 'deterministic-simulation', now),
-  ]);
+  await store.createTask({ id: taskId, prompt });
 
-  return Response.json({ id: taskId, status: 'completed', createdAt: now }, { status: 201 });
+  const dispatch = await runInBackground(async () => {
+    const backgroundStore = await createD1Store();
+    await runTask({ store: backgroundStore, config, taskId, prompt });
+  });
+
+  return Response.json(
+    { taskId, id: taskId, status: 'queued', mode: config ? 'llm' : 'rule', dispatch },
+    { status: 202 },
+  );
 }

@@ -17,8 +17,15 @@
 /out/
 
 # misc
+/.tmp/
+~$*
+/.playwright-cli/
+tsconfig.tsbuildinfo
 .DS_Store
 *.pem
+
+# 归档的旧构建产物（体积较大，不进仓库）
+/artifacts/legacy/
 
 # debug
 npm-debug.log*

@@ -2,6 +2,7 @@ import { sites } from '@openai/sites-vite-plugin';
 import tailwindcss from '@tailwindcss/postcss';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
+import type { UserConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json';
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
@@ -44,7 +45,8 @@ export default defineConfig(async () => {
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
   const { cloudflare } = await import('@cloudflare/vite-plugin');
 
-  return {
+  // vite-plus 与 @cloudflare/vite-plugin 各自携带一份 Vite 类型，这里显式收敛为本项目版本。
+  const config: UserConfig = {
     css: { postcss: { plugins: [tailwindcss()] } },
     server: {
       allowedHosts: true,
@@ -61,4 +63,5 @@ export default defineConfig(async () => {
       }),
     ],
   };
+  return config;
 });
