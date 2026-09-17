@@ -8,7 +8,8 @@ export type AuditLike = {
   action: string;
   result: string;
   status: 'completed' | 'blocked' | 'pending';
-  at: number;
+  /** 时间戳只由任务执行器逐步记录；同步路径与引擎本身不产生，此时缺省。 */
+  at?: number;
   model?: string;
 };
 

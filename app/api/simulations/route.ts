@@ -26,7 +26,10 @@ export async function POST(request: Request) {
   const result = runSimulation(scenario, { ablations: body.ablations, searchSpace: true });
   const engineMs = Date.now() - startedAt;
   const simulationId = crypto.randomUUID();
-  const audit = result.audit.map((entry) => ({ ...entry, at: entry.at ?? Date.now() }));
+  // 同步调试路径：引擎本身不产生时间戳（保持确定性），这里也不再为每一步补一个相同的
+  // Date.now()——那会让 8 条审计记录显示成同一个时刻，看起来像真实时间戳其实是伪造的。
+  // 逐步时间戳只由异步任务执行器记录；同步路径按事件序列留痕，界面显示为「序列」。
+  const audit = result.audit;
 
   const db = await ensureDatabase();
   const taskId = body.taskId ?? null;

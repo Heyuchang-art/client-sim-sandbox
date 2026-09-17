@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T10:58:09.818Z",
+  "generatedAt": "2026-09-17T11:00:28.804Z",
   "version": "0.2.0",
   "ruleVersion": "compliance-rules@2026.09",
   "environment": {
@@ -41,13 +41,13 @@
       "timeSteps": 10,
       "seed": 20260830,
       "runs": [
-        29.76,
-        16.99,
-        13.44,
-        15.49,
-        11.97
+        26.77,
+        16.28,
+        12.22,
+        13.68,
+        10.57
       ],
-      "medianMs": 15.49,
+      "medianMs": 13.68,
       "aggregateHash": "6094f9f39464e63a",
       "peakPanic": 0.1934,
       "finalSell": 0.0613,
@@ -59,11 +59,11 @@
       "timeSteps": 20,
       "seed": 20260830,
       "runs": [
-        77.01,
-        76.42,
-        80.07
+        72.25,
+        73.25,
+        78.08
       ],
-      "medianMs": 77.01,
+      "medianMs": 73.25,
       "aggregateHash": "e6b5c5c0285438aa",
       "peakPanic": 0.1959,
       "finalSell": 0.0606,
@@ -249,7 +249,7 @@
       "peakPanic": 0.0263,
       "finalSell": 0.04,
       "finalChurn": 0.1658,
-      "engineMs": 5.13,
+      "engineMs": 5.59,
       "retrieved": [],
       "note": "单一全局智能体：关闭心理层、传播层与记忆层。"
     },
@@ -266,11 +266,11 @@
       "recommended": "baseline",
       "rankAgreement": 1,
       "stability": 1,
-      "latencyMs": 33,
+      "latencyMs": 34,
       "peakPanic": 0.1934,
       "finalSell": 0.0613,
       "finalChurn": 0.1363,
-      "engineMs": 7.05,
+      "engineMs": 6.14,
       "retrieved": [],
       "note": "完整双层模拟：心理层 + 传播层 + 记忆层 + 合规层。"
     }
@@ -495,8 +495,8 @@
   },
   "server": {
     "baseUrl": "http://localhost:3000",
-    "sseFirstFrameMs": 432,
-    "endToEndMs": 433
+    "sseFirstFrameMs": 437,
+    "endToEndMs": 437
   },
   "acceptance": [
     {
@@ -526,13 +526,13 @@
     {
       "item": "300×10 引擎耗时",
       "target": "< 30000 ms",
-      "actual": "15.49 ms",
+      "actual": "13.68 ms",
       "passed": true
     },
     {
       "item": "1000×20 引擎耗时",
       "target": "< 30000 ms",
-      "actual": "77.01 ms",
+      "actual": "73.25 ms",
       "passed": true
     },
     {
