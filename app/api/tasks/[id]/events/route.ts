@@ -10,7 +10,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * 真实 SSE：从 task_events 增量推送执行事件，直到任务进入终态。
- * 首个事件（step.started）在任何模型调用之前写入，因此首帧延迟与模型无关。
+ * 连接建立后立即下发 `: connected` 注释帧，因此首帧延迟与模型无关；
+ * 随后按事件序号推送执行器写入的 task.status / step.started 等事件。
+ * 单次事件流最长 120 秒（maxStreamMs），超时后由客户端带 ?after=<最后事件序号> 重连续传。
  */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;

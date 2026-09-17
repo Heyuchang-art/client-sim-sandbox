@@ -1,0 +1,581 @@
+{
+  "generatedAt": "2026-09-17T10:55:01.228Z",
+  "version": "0.2.0",
+  "ruleVersion": "compliance-rules@2026.09",
+  "environment": {
+    "node": "v24.16.0",
+    "platform": "win32",
+    "modelConfigured": false
+  },
+  "thresholds": {
+    "planSuccessRate": {
+      "value": 0.9,
+      "comparator": ">=",
+      "label": "工具链完整率与工具调用成功率"
+    },
+    "engineMs": {
+      "value": 30000,
+      "comparator": "<=",
+      "label": "300×10 引擎耗时上限（毫秒）"
+    },
+    "sseFirstFrameMs": {
+      "value": 2000,
+      "comparator": "<=",
+      "label": "SSE 首帧上限（毫秒）"
+    },
+    "complianceRecall": {
+      "value": 0.95,
+      "comparator": ">=",
+      "label": "合规召回率"
+    },
+    "complianceFalseBlock": {
+      "value": 0.1,
+      "comparator": "<=",
+      "label": "合规误拦截率"
+    }
+  },
+  "engine": [
+    {
+      "label": "300×10",
+      "customers": 300,
+      "timeSteps": 10,
+      "seed": 20260830,
+      "runs": [
+        27.62,
+        16.42,
+        13.4,
+        13.29,
+        10.96
+      ],
+      "medianMs": 13.4,
+      "aggregateHash": "6094f9f39464e63a",
+      "peakPanic": 0.1934,
+      "finalSell": 0.0613,
+      "finalChurn": 0.1363
+    },
+    {
+      "label": "1000×20",
+      "customers": 1000,
+      "timeSteps": 20,
+      "seed": 20260830,
+      "runs": [
+        75.54,
+        79.87,
+        84.08
+      ],
+      "medianMs": 79.87,
+      "aggregateHash": "e6b5c5c0285438aa",
+      "peakPanic": 0.1959,
+      "finalSell": 0.0606,
+      "finalChurn": 0.141
+    }
+  ],
+  "determinism": {
+    "repeats": 5,
+    "identical": true,
+    "hash": "6094f9f39464e63a"
+  },
+  "shockSensitivity": [
+    {
+      "shock": 0.1,
+      "recommended": "baseline",
+      "peakPanic": 0.1934,
+      "finalSell": 0.0613,
+      "finalChurn": 0.1363,
+      "baselinePeakPanic": 0.1934,
+      "baselineFinalSell": 0.0613,
+      "baselineFinalChurn": 0.1363,
+      "peakStep": 1
+    },
+    {
+      "shock": 0.2,
+      "recommended": "baseline",
+      "peakPanic": 0.3539,
+      "finalSell": 0.1155,
+      "finalChurn": 0.145,
+      "baselinePeakPanic": 0.3539,
+      "baselineFinalSell": 0.1155,
+      "baselineFinalChurn": 0.145,
+      "peakStep": 1
+    },
+    {
+      "shock": 0.3,
+      "recommended": "broadcast",
+      "peakPanic": 0.452,
+      "finalSell": 0.091,
+      "finalChurn": 0.1081,
+      "baselinePeakPanic": 0.5237,
+      "baselineFinalSell": 0.2329,
+      "baselineFinalChurn": 0.1575,
+      "peakStep": 1
+    }
+  ],
+  "shockMonotonic": true,
+  "durationSensitivity": [
+    {
+      "durationHours": 24,
+      "stepHours": 2.4,
+      "peakPanic": 0.1934,
+      "peakStep": 1,
+      "finalSell": 0.0613
+    },
+    {
+      "durationHours": 48,
+      "stepHours": 4.8,
+      "peakPanic": 0.1965,
+      "peakStep": 1,
+      "finalSell": 0.0679
+    },
+    {
+      "durationHours": 72,
+      "stepHours": 7.2,
+      "peakPanic": 0.1983,
+      "peakStep": 1,
+      "finalSell": 0.0724
+    }
+  ],
+  "durationDirectional": true,
+  "segment": {
+    "criteria": "持有高波动产品、在 10% 基准冲击下回撤不低于 8% 的客户（客群口径跨情景稳定）",
+    "generated": 900,
+    "matched": 300,
+    "excluded": 525,
+    "relaxed": false,
+    "reproducibility": true
+  },
+  "ablations": [
+    {
+      "name": "disablePsychology",
+      "peakPanic": 0.1793,
+      "finalSell": 0.045,
+      "finalChurn": 0.1707,
+      "deltaPeakPanic": -0.0141,
+      "deltaFinalSell": -0.0163,
+      "broadcastPeakPanic": 0.1599,
+      "broadcastDeltaPeakPanic": -0.0131
+    },
+    {
+      "name": "disableContagion",
+      "peakPanic": 0.163,
+      "finalSell": 0.0545,
+      "finalChurn": 0.1345,
+      "deltaPeakPanic": -0.0304,
+      "deltaFinalSell": -0.0068,
+      "broadcastPeakPanic": 0.1426,
+      "broadcastDeltaPeakPanic": -0.0304
+    },
+    {
+      "name": "disableMemory",
+      "peakPanic": 0.0596,
+      "finalSell": 0.0474,
+      "finalChurn": 0.1307,
+      "deltaPeakPanic": -0.1338,
+      "deltaFinalSell": -0.0139,
+      "broadcastPeakPanic": 0.0396,
+      "broadcastDeltaPeakPanic": -0.1334
+    },
+    {
+      "name": "disableCompliance",
+      "peakPanic": 0.1934,
+      "finalSell": 0.0613,
+      "finalChurn": 0.1363,
+      "deltaPeakPanic": 0,
+      "deltaFinalSell": 0,
+      "broadcastPeakPanic": 0.2269,
+      "broadcastDeltaPeakPanic": 0.0538
+    }
+  ],
+  "modes": [
+    {
+      "mode": "llm-only",
+      "label": "仅模型（无模拟）",
+      "source": "rule",
+      "degraded": true,
+      "ranking": [
+        "broadcast",
+        "segmented",
+        "baseline"
+      ],
+      "recommended": "broadcast",
+      "rankAgreement": 0.3333,
+      "stability": null,
+      "latencyMs": 0,
+      "peakPanic": null,
+      "finalSell": null,
+      "finalChurn": null,
+      "engineMs": null,
+      "retrieved": [],
+      "note": "未接入模型，降级为内置规则近似：仅依据策略文本线索排序，不运行数值模拟。该行不是模型表现，不能作为能力对照结论。"
+    },
+    {
+      "mode": "llm-rag",
+      "label": "模型 + 知识检索（无模拟）",
+      "source": "rule",
+      "degraded": true,
+      "ranking": [
+        "broadcast",
+        "segmented",
+        "baseline"
+      ],
+      "recommended": "broadcast",
+      "rankAgreement": 0.3333,
+      "stability": null,
+      "latencyMs": 0,
+      "peakPanic": null,
+      "finalSell": null,
+      "finalChurn": null,
+      "engineMs": null,
+      "retrieved": [
+        "KB-17",
+        "KB-01",
+        "KB-15"
+      ],
+      "note": "未接入模型，降级为内置规则近似：以检索到的投教/合规语料覆盖度修正策略排序。该行不是模型表现，不能作为能力对照结论。"
+    },
+    {
+      "mode": "single-agent",
+      "label": "单智能体（无个体状态与传播）",
+      "source": "rule",
+      "degraded": false,
+      "ranking": [
+        "baseline",
+        "broadcast",
+        "segmented"
+      ],
+      "recommended": "baseline",
+      "rankAgreement": 1,
+      "stability": 1,
+      "latencyMs": 25,
+      "peakPanic": 0.0263,
+      "finalSell": 0.04,
+      "finalChurn": 0.1658,
+      "engineMs": 5.08,
+      "retrieved": [],
+      "note": "单一全局智能体：关闭心理层、传播层与记忆层。"
+    },
+    {
+      "mode": "dual-layer",
+      "label": "双层模拟（本方案）",
+      "source": "rule",
+      "degraded": false,
+      "ranking": [
+        "baseline",
+        "broadcast",
+        "segmented"
+      ],
+      "recommended": "baseline",
+      "rankAgreement": 1,
+      "stability": 1,
+      "latencyMs": 31,
+      "peakPanic": 0.1934,
+      "finalSell": 0.0613,
+      "finalChurn": 0.1363,
+      "engineMs": 5.8,
+      "retrieved": [],
+      "note": "完整双层模拟：心理层 + 传播层 + 记忆层 + 合规层。"
+    }
+  ],
+  "modeByScenario": [
+    {
+      "shock": 0.05,
+      "outcomes": [
+        {
+          "mode": "llm-only",
+          "recommended": "broadcast",
+          "rankAgreement": 0.3333,
+          "stability": null,
+          "degraded": true
+        },
+        {
+          "mode": "llm-rag",
+          "recommended": "broadcast",
+          "rankAgreement": 0.3333,
+          "stability": null,
+          "degraded": true
+        },
+        {
+          "mode": "single-agent",
+          "recommended": "baseline",
+          "rankAgreement": 1,
+          "stability": 1,
+          "degraded": false
+        },
+        {
+          "mode": "dual-layer",
+          "recommended": "baseline",
+          "rankAgreement": 1,
+          "stability": 1,
+          "degraded": false
+        }
+      ]
+    },
+    {
+      "shock": 0.2,
+      "outcomes": [
+        {
+          "mode": "llm-only",
+          "recommended": "broadcast",
+          "rankAgreement": 0.3333,
+          "stability": null,
+          "degraded": true
+        },
+        {
+          "mode": "llm-rag",
+          "recommended": "broadcast",
+          "rankAgreement": 0.3333,
+          "stability": null,
+          "degraded": true
+        },
+        {
+          "mode": "single-agent",
+          "recommended": "baseline",
+          "rankAgreement": 1,
+          "stability": 1,
+          "degraded": false
+        },
+        {
+          "mode": "dual-layer",
+          "recommended": "baseline",
+          "rankAgreement": 1,
+          "stability": 1,
+          "degraded": false
+        }
+      ]
+    },
+    {
+      "shock": 0.5,
+      "outcomes": [
+        {
+          "mode": "llm-only",
+          "recommended": "broadcast",
+          "rankAgreement": 0.6667,
+          "stability": null,
+          "degraded": true
+        },
+        {
+          "mode": "llm-rag",
+          "recommended": "broadcast",
+          "rankAgreement": 0.6667,
+          "stability": null,
+          "degraded": true
+        },
+        {
+          "mode": "single-agent",
+          "recommended": "broadcast",
+          "rankAgreement": 0.3333,
+          "stability": 1,
+          "degraded": false
+        },
+        {
+          "mode": "dual-layer",
+          "recommended": "segmented",
+          "rankAgreement": 1,
+          "stability": 1,
+          "degraded": false
+        }
+      ]
+    }
+  ],
+  "compliance": {
+    "total": 32,
+    "blocked": 11,
+    "review": 10,
+    "clean": 11,
+    "recall": 0.9524,
+    "blockedRecall": 1,
+    "reviewRecall": 0.9,
+    "falseBlockRate": 0,
+    "passed": true,
+    "missed": [
+      "c14(review)"
+    ],
+    "falseBlocked": []
+  },
+  "planEval": {
+    "total": 20,
+    "chainSuccessRate": 1,
+    "toolSuccessRate": 1,
+    "scenarioSuccessRate": 1,
+    "planSourceCounts": {
+      "rule": 20
+    },
+    "modelConfigured": false,
+    "passed": true
+  },
+  "strategySweep": {
+    "scenarios": 630,
+    "wins": {
+      "baseline": 308,
+      "broadcast": 166,
+      "segmented": 156
+    },
+    "weightSensitivity": [
+      {
+        "cost": 0.1,
+        "wake": 0,
+        "wins": {
+          "baseline": 8,
+          "broadcast": 534,
+          "segmented": 88
+        }
+      },
+      {
+        "cost": 0.1,
+        "wake": 2,
+        "wins": {
+          "baseline": 308,
+          "broadcast": 166,
+          "segmented": 156
+        }
+      },
+      {
+        "cost": 0.1,
+        "wake": 8,
+        "wins": {
+          "baseline": 404,
+          "segmented": 210,
+          "broadcast": 16
+        }
+      },
+      {
+        "cost": 0.02,
+        "wake": 0,
+        "wins": {
+          "broadcast": 227,
+          "segmented": 403
+        }
+      },
+      {
+        "cost": 0.5,
+        "wake": 0,
+        "wins": {
+          "baseline": 350,
+          "broadcast": 280
+        }
+      }
+    ],
+    "limits": [
+      "打扰权重取极端值（8）且时长压到 6 小时时，40%→50% 区间会出现一次深度回落（推荐由「segmented」回到「broadcast」）。打扰权重取极端值（8）且时长压到 6 小时时，40%→50% 区间会出现一次深度回落（推荐由「segmented」回到「broadcast」）。实测机制是：唤醒罚分本身随恐慌上升而衰减（wake = 唤醒系数 × (1 − 上一步恐慌) × 本步新增触达），而 λ_wake 把它放大了 8 倍；广播式的唤醒基数更大，因此衰减带来的减负也更多（实测 50% 档广播式的唤醒罚分比 40% 档低约 42%），而人工成本不随恐慌衰减，于是推荐在高冲击档翻回低成本的广播式。需要特别指出：恐慌并未饱和（该场景峰值约 73%–79%，上限为 1.0），因此这**不是**饱和效应。该配置不属于默认口径，已记录为模型迭代项；唤醒项是否应改为不随恐慌衰减，属于待评估的建模选择。该配置不属于默认口径，已记录为模型迭代项。",
+      "客户关系网络为合成网络，三类关系边是对三种传播机制的抽象代理，不具有真实社交网络的度分布特征。",
+      "五类客户原型为人工设定的合成原型，不是从真实客户数据聚类得出；心理参数尚未用真实分布校准。"
+    ],
+    "checks": [
+      {
+        "item": "扫描场景数 ≥ 200",
+        "detail": "630",
+        "passed": true
+      },
+      {
+        "item": "跌幅越大，推荐方案的人工深度不下降（与 λ 无关）",
+        "detail": "90 条序列，违反 0 条",
+        "passed": true
+      },
+      {
+        "item": "微跌（5%）不推荐高人工深度方案（深度 ≤ 0.1）",
+        "detail": "最大深度 0.00",
+        "passed": true
+      },
+      {
+        "item": "重挫（50%）不推荐放弃触达的方案（覆盖率 ≥ 0.25）",
+        "detail": "最小覆盖率 0.86",
+        "passed": true
+      },
+      {
+        "item": "同种子聚合签名完全一致",
+        "detail": "一致",
+        "passed": true
+      },
+      {
+        "item": "每次推荐都有三项归因分解",
+        "detail": "可用",
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "server": {
+    "baseUrl": "http://localhost:3000",
+    "sseFirstFrameMs": 451,
+    "endToEndMs": 451
+  },
+  "acceptance": [
+    {
+      "item": "标准任务工具链完整率",
+      "target": "≥ 90%",
+      "actual": "100.0%",
+      "passed": true
+    },
+    {
+      "item": "标准任务工具调用成功率",
+      "target": "≥ 90%",
+      "actual": "100.0%",
+      "passed": true
+    },
+    {
+      "item": "标准任务场景抽取一致率",
+      "target": "≥ 90%",
+      "actual": "100.0%",
+      "passed": true
+    },
+    {
+      "item": "模型规划产出被采纳占比",
+      "target": "记录值",
+      "actual": "未接入模型（规划走内置模板）",
+      "passed": null
+    },
+    {
+      "item": "300×10 引擎耗时",
+      "target": "< 30000 ms",
+      "actual": "13.4 ms",
+      "passed": true
+    },
+    {
+      "item": "1000×20 引擎耗时",
+      "target": "< 30000 ms",
+      "actual": "79.87 ms",
+      "passed": true
+    },
+    {
+      "item": "同种子完全复现",
+      "target": "签名一致",
+      "actual": "一致",
+      "passed": true
+    },
+    {
+      "item": "基线恐慌/卖出/流失随跌幅不反向",
+      "target": "不下降",
+      "actual": "单调成立；segmented 最大反向 0.0005",
+      "passed": true
+    },
+    {
+      "item": "时长 24h→72h 方向一致",
+      "target": "峰值后移或抬升",
+      "actual": "方向一致",
+      "passed": true
+    },
+    {
+      "item": "禁止性合规样例召回",
+      "target": "≥ 95%",
+      "actual": "100.0%",
+      "passed": true
+    },
+    {
+      "item": "待复核样例召回",
+      "target": "记录值",
+      "actual": "90.0%",
+      "passed": true
+    },
+    {
+      "item": "合规误拦截",
+      "target": "≤ 10%",
+      "actual": "0.0%",
+      "passed": true
+    },
+    {
+      "item": "沟通策略夺冠分布覆盖三种方案",
+      "target": "每种 ≥ 10%",
+      "actual": "baseline 48.9% · broadcast 26.3% · segmented 24.8%",
+      "passed": true
+    }
+  ]
+}

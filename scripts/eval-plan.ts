@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { createMemoryStore } from '../lib/harness/memory-store';
 import { planSteps } from '../lib/harness/planner';
 import { runTask } from '../lib/harness/runner';
+import { readRuntimeEnv } from '../lib/harness/env';
+import { loadModelConfig } from '../lib/model/adapter';
 import type { HarnessEvent, TaskPlan } from '../lib/harness/types';
 import type { ScenarioConfig } from '../lib/scenario';
 
@@ -17,9 +19,12 @@ export type TaskEvalResult = {
   id: string;
   category: string;
   status: string;
-  planOk: boolean;
+  /** 工具链是否完整：8 个标准步骤齐全且顺序一致。 */
+  chainOk: boolean;
   scenarioOk: boolean;
   toolsOk: boolean;
+  /** 规划来源：rule=内置模板，llm=模型产出被采纳，degraded=模型调用失败回落。 */
+  planSource: string;
   durationMs: number;
   missingTools: string[];
   failedSteps: string[];
@@ -29,9 +34,16 @@ export type TaskEvalResult = {
 export type PlanEvalReport = {
   generatedAt: string;
   total: number;
-  planSuccessRate: number;
+  /**
+   * 工具链完整率：8 个标准步骤齐全且顺序一致的占比。
+   * 未配置模型密钥时，规划走内置模板，该比率退化为确定性流水线的冒烟测试，
+   * 不能解释为模型规划能力——真实规划能力看 planSourceCounts 里的 llm 占比。
+   */
+  chainSuccessRate: number;
   toolSuccessRate: number;
   scenarioSuccessRate: number;
+  planSourceCounts: Record<string, number>;
+  modelConfigured: boolean;
   threshold: number;
   passed: boolean;
   results: TaskEvalResult[];
@@ -50,10 +62,12 @@ function rate(count: number, total: number) {
 }
 
 /**
- * 标准任务集评测：逐条执行 Harness，统计规划成功率、场景抽取成功率与工具调用成功率。
- * 规划成功 = 8 个标准工具步骤齐全且顺序一致；工具调用成功 = 任务成功且无步骤缺失。
+ * 标准任务集评测。
+ * 三条指标都必须有失败的可能：工具链可能缺步、场景抽取可能抽错、任务可能失败。
+ * 配置了模型密钥时会真实调用模型，此时 llm 占比才反映模型的规划能力。
  */
 export async function runPlanEval(cases: TaskEvalCase[] = loadTaskEvalCases(), threshold = 0.9): Promise<PlanEvalReport> {
+  const config = loadModelConfig(await readRuntimeEnv());
   const results: TaskEvalResult[] = [];
   const expectedTools = planSteps.map((step) => step.tool);
 
@@ -63,7 +77,7 @@ export async function runPlanEval(cases: TaskEvalCase[] = loadTaskEvalCases(), t
     let status = 'failed';
     let failedSteps: string[] = [];
     try {
-      const outcome = await runTask({ store, config: null, taskId: item.id, prompt: item.prompt });
+      const outcome = await runTask({ store, config, taskId: item.id, prompt: item.prompt });
       status = outcome.status;
       failedSteps = outcome.events.filter((event) => event.type === 'step.failed').map((event) => String(event.payload.tool));
     } catch (error) {
@@ -89,7 +103,7 @@ export async function runPlanEval(cases: TaskEvalCase[] = loadTaskEvalCases(), t
       }
     }
 
-    const planOk = Boolean(
+    const chainOk = Boolean(
       plan && plan.steps.length === expectedTools.length && plan.steps.every((step, index) => step.tool === expectedTools[index]),
     );
     const toolsOk = status === 'succeeded' && missingTools.length === 0;
@@ -97,9 +111,10 @@ export async function runPlanEval(cases: TaskEvalCase[] = loadTaskEvalCases(), t
       id: item.id,
       category: item.category ?? '未分类',
       status,
-      planOk,
+      chainOk,
       scenarioOk: mismatches.length === 0,
       toolsOk,
+      planSource: plan?.source ?? 'none',
       durationMs: Date.now() - startedAt,
       missingTools,
       failedSteps,
@@ -108,41 +123,55 @@ export async function runPlanEval(cases: TaskEvalCase[] = loadTaskEvalCases(), t
   }
 
   const total = results.length;
-  const planSuccessRate = rate(results.filter((result) => result.planOk).length, total);
+  const chainSuccessRate = rate(results.filter((result) => result.chainOk).length, total);
   const toolSuccessRate = rate(results.filter((result) => result.toolsOk).length, total);
   const scenarioSuccessRate = rate(results.filter((result) => result.scenarioOk).length, total);
+  const planSourceCounts: Record<string, number> = {};
+  for (const result of results) {
+    planSourceCounts[result.planSource] = (planSourceCounts[result.planSource] ?? 0) + 1;
+  }
 
   return {
     generatedAt: new Date().toISOString(),
     total,
-    planSuccessRate,
+    chainSuccessRate,
     toolSuccessRate,
     scenarioSuccessRate,
+    planSourceCounts,
+    modelConfigured: config !== null,
     threshold,
-    passed: planSuccessRate >= threshold && toolSuccessRate >= threshold,
+    // 场景抽取必须一并达标：只校验工具链会放过「抽取全错但流程跑通」的情况。
+    passed: chainSuccessRate >= threshold && toolSuccessRate >= threshold && scenarioSuccessRate >= threshold,
     results,
   };
 }
 
 export function formatPlanEval(report: PlanEvalReport) {
+  const pct = (value: number) => (value * 100).toFixed(1) + '%';
   const lines = [
     '# 标准任务集评测',
     '',
     '- 任务数：' + report.total,
-    '- 规划成功率：' + (report.planSuccessRate * 100).toFixed(1) + '%（阈值 ' + (report.threshold * 100).toFixed(0) + '%）',
-    '- 工具调用成功率：' + (report.toolSuccessRate * 100).toFixed(1) + '%（阈值 ' + (report.threshold * 100).toFixed(0) + '%）',
-    '- 场景抽取一致率：' + (report.scenarioSuccessRate * 100).toFixed(1) + '%',
+    '- 模型配置：' + (report.modelConfigured ? '已接入' : '未接入（规划走内置模板）'),
+    '- 规划来源分布：' + Object.entries(report.planSourceCounts).map(([key, value]) => key + '=' + value).join('，'),
+    '- 工具链完整率：' + pct(report.chainSuccessRate) + '（阈值 ' + pct(report.threshold) + '）',
+    '- 工具调用成功率：' + pct(report.toolSuccessRate) + '（阈值 ' + pct(report.threshold) + '）',
+    '- 场景抽取一致率：' + pct(report.scenarioSuccessRate) + '（阈值 ' + pct(report.threshold) + '）',
     '- 结论：' + (report.passed ? '通过' : '未通过'),
     '',
-    '| 任务 | 分类 | 状态 | 规划 | 场景 | 工具 | 耗时(ms) |',
-    '| --- | --- | --- | --- | --- | --- | --- |',
+    report.modelConfigured
+      ? '> 已接入模型：规划来源中的 llm 占比反映模型产出被采纳的比例。'
+      : '> 未接入模型：规划走内置模板，工具链完整率是确定性流水线的冒烟测试，不代表模型规划能力；模型的规划能力需接入密钥后看 llm 占比。',
+    '',
+    '| 任务 | 分类 | 状态 | 工具链 | 场景 | 工具 | 规划来源 | 耗时(ms) |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
   ];
   for (const result of report.results) {
     lines.push(
-      '| ' + result.id + ' | ' + result.category + ' | ' + result.status + ' | ' + (result.planOk ? '✓' : '✗') + ' | ' + (result.scenarioOk ? '✓' : '✗') + ' | ' + (result.toolsOk ? '✓' : '✗') + ' | ' + result.durationMs + ' |',
+      '| ' + result.id + ' | ' + result.category + ' | ' + result.status + ' | ' + (result.chainOk ? '✓' : '✗') + ' | ' + (result.scenarioOk ? '✓' : '✗') + ' | ' + (result.toolsOk ? '✓' : '✗') + ' | ' + result.planSource + ' | ' + result.durationMs + ' |',
     );
   }
-  const problems = report.results.filter((result) => !result.planOk || !result.scenarioOk || !result.toolsOk);
+  const problems = report.results.filter((result) => !result.chainOk || !result.scenarioOk || !result.toolsOk);
   if (problems.length) {
     lines.push('', '## 失败明细', '');
     for (const problem of problems) {

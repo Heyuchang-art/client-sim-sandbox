@@ -16,7 +16,8 @@
     "format": "oxfmt",
     "db:generate": "drizzle-kit generate",
     "eval:plan": "node scripts/run.mjs scripts/eval-plan.ts",
-    "eval:compliance": "node scripts/run.mjs scripts/eval-compliance.ts"
+    "eval:compliance": "node scripts/run.mjs scripts/eval-compliance.ts",
+    "eval:strategies": "node scripts/run.mjs scripts/sweep-strategies.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

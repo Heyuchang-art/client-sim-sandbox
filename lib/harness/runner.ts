@@ -1,9 +1,9 @@
-import { defaultScenario } from '../scenario';
+import { defaultScenario, parseScenarioPrompt, type ScenarioConfig } from '../scenario';
 import { ModelUnavailableError, ModelTimeoutError, errorCodeOf, type ModelConfig } from '../model/adapter';
 import { RULE_VERSION } from '../compliance';
 import { defaultPlan, planTask } from './planner';
 import { toolRegistry, type HarnessContext } from './tools';
-import type { TaskStore } from './store';
+import type { SkillProposal, TaskStore } from './store';
 import { buildSimulationRecord, buildStepStates } from './persist';
 import type { HarnessEvent, HarnessEventType, TaskErrorCode, TaskMode, TaskPlan, TaskStatus } from './types';
 
@@ -35,6 +35,52 @@ export type RunnerOptions = {
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** 已批准技能的复用匹配：客群口径一致、且市场冲击接近（±5 个百分点）。 */
+function skillDistance(skill: SkillProposal, scenario: ScenarioConfig) {
+  try {
+    const parsed = JSON.parse(skill.definitionJson) as { scenario?: ScenarioConfig };
+    const saved = parsed.scenario;
+    if (!saved || saved.targetSegment !== scenario.targetSegment) return null;
+    const gap = Math.abs(Math.abs(saved.marketShock) - Math.abs(scenario.marketShock));
+    return gap <= 0.05 ? gap : null;
+  } catch {
+    return null;
+  }
+}
+
+async function findReusableSkill(store: TaskStore, scenario: ScenarioConfig): Promise<SkillProposal | null> {
+  const approved = await store.listApprovedSkills();
+  const ranked = approved
+    .map((skill) => ({ skill, distance: skillDistance(skill, scenario) }))
+    .filter((item): item is { skill: SkillProposal; distance: number } => item.distance !== null)
+    .sort((left, right) => left.distance - right.distance);
+  return ranked[0]?.skill ?? null;
+}
+
+/**
+ * 取出技能里沉淀的编排。只有当保存的工具序列完整且每个工具都合法时才采用，
+ * 否则回落到常规规划，避免一条损坏的技能记录把任务带进死路。
+ */
+function skillPlan(skill: SkillProposal): TaskPlan | null {
+  try {
+    const parsed = JSON.parse(skill.definitionJson) as { plan?: TaskPlan };
+    const plan = parsed.plan;
+    if (!plan || !Array.isArray(plan.steps) || plan.steps.length === 0) return null;
+    const known = new Set(Object.keys(toolRegistry));
+    const steps = plan.steps
+      .filter((step) => step && typeof step.tool === 'string' && known.has(step.tool))
+      .map((step) => ({ index: 0, tool: step.tool, title: step.title ?? step.tool, intent: step.intent ?? '' }));
+    if (steps.length !== plan.steps.length) return null;
+    return {
+      objective: plan.objective ?? '复用已批准技能的编排。',
+      steps: steps.map((step, index) => ({ ...step, index: index + 1 })),
+      source: 'skill',
+    };
+  } catch {
+    return null;
+  }
+}
+
 
 export type TaskRunOutcome = {
   status: TaskStatus;
@@ -134,20 +180,53 @@ export async function runTask(options: RunnerOptions): Promise<TaskRunOutcome> {
   await emit('task.status', { status: 'running', mode, model, stage: 'planning', plan: defaultPlan() });
 
   let plan: TaskPlan = defaultPlan();
+  let reusedSkill: SkillProposal | null = null;
   const audit: Array<{ seq: number; actor: string; action: string; result: string; status: 'completed' | 'blocked' | 'pending'; at: number; model?: string }> = [];
 
   try {
-    const planned = await withTimeout(
-      planTask(config, prompt),
-      stepTimeoutMs,
-      () => new TaskTimeoutError('任务规划超时'),
-    );
-    plan = planned.value;
-    if (planned.mode !== 'llm') mode = config ? 'degraded' : 'rule';
-    if (planned.model) model = planned.model;
-    if (planned.note) context.notes.push(planned.note);
+    // 已批准技能复用：规划之前先用规则解析做一次轻量场景预解析，
+    // 命中同类场景时直接采用技能里沉淀的编排，而不是重新规划。
+    reusedSkill = await findReusableSkill(store, parseScenarioPrompt(prompt).config);
+    const adopted = reusedSkill ? skillPlan(reusedSkill) : null;
+    if (reusedSkill && adopted) {
+      plan = adopted;
+      await emit('skill.reused', {
+        id: reusedSkill.id,
+        name: reusedSkill.name,
+        version: reusedSkill.version,
+        sourceTaskId: reusedSkill.sourceTaskId,
+        tools: plan.steps.map((step) => step.tool),
+      });
+      context.notes.push(`采用已批准技能「${reusedSkill.name}」v${reusedSkill.version} 沉淀的编排。`);
+    } else {
+      reusedSkill = null;
+    }
+
+    if (plan.source !== 'skill') {
+      // 说明：技能匹配用的是规划前的规则预解析场景，真实抽取完成后会在 scenario.extract 分支复核。
+      // 该复核只能留痕、不能回退编排，前提是「不同技能沉淀的编排可能不同」；当前规划器的输出空间
+      // 只有一个序列，所以预解析与真实抽取即使不一致，实际执行的步骤也完全相同，暂无实际影响。
+      // 一旦放开 validatePlan 的工具序列约束，这里必须改为「复核通过后才采用编排」。
+      const planned = await withTimeout(
+        planTask(config, prompt),
+        stepTimeoutMs,
+        () => new TaskTimeoutError('任务规划超时'),
+      );
+      plan = planned.value;
+      if (planned.mode !== 'llm') mode = config ? 'degraded' : 'rule';
+      if (planned.model) model = planned.model;
+      if (planned.note) context.notes.push(planned.note);
+    }
     await store.updateTask(taskId, { planJson: JSON.stringify(plan), mode, model });
-    await emit('task.status', { status: 'running', plan, mode, model, stage: 'planned', note: planned.note ?? null });
+    await emit('task.status', {
+      status: 'running',
+      plan,
+      mode,
+      model,
+      stage: 'planned',
+      planSource: plan.source,
+      note: reusedSkill ? `编排来自已批准技能「${reusedSkill.name}」v${reusedSkill.version}` : null,
+    });
 
     for (const step of plan.steps) {
       await ensureNotCancelled();
@@ -206,6 +285,22 @@ export async function runTask(options: RunnerOptions): Promise<TaskRunOutcome> {
       });
       if (step.tool === 'scenario.extract') {
         await store.updateTask(taskId, { scenarioJson: JSON.stringify(context.scenario) });
+        // 采纳技能用的是规则预解析出的场景，这里拿真实抽取结果复核一次。
+        // 工具序列已经按技能执行、无法回退，因此不复用时要显式留痕，避免审计里出现
+        // 「按 A 场景复用了技能，实际跑的是 B 场景」的隐性不一致。
+        if (reusedSkill && skillDistance(reusedSkill, context.scenario) === null) {
+          await emit('skill.reuse_rejected', {
+            id: reusedSkill.id,
+            name: reusedSkill.name,
+            version: reusedSkill.version,
+            reason: '真实抽取出的场景与技能记录的客群口径或冲击幅度不匹配',
+            extractedScenario: context.scenario,
+          });
+          context.notes.push(
+            `技能「${reusedSkill.name}」v${reusedSkill.version} 的编排已按预解析场景采用，但真实抽取结果不匹配，已记录该差异供人工核对。`,
+          );
+
+        }
       }
       await store.updateTask(taskId, { progress: Math.round((step.index / plan.steps.length) * 100) });
     }
@@ -238,10 +333,12 @@ export async function runTask(options: RunnerOptions): Promise<TaskRunOutcome> {
     await store.saveFindings(simulationId, result.findings);
 
     const skillName = `暴跌行情客户群体压力测试（${(Math.abs(result.scenario.marketShock) * 100).toFixed(0)}%）`;
+    // 同名技能按已存在版本递增，否则回滚接口永远找不到更早的版本。
+    const skillVersion = await store.nextSkillVersion(skillName);
     await store.proposeSkill({
       id: crypto.randomUUID(),
       name: skillName,
-      version: 1,
+      version: skillVersion,
       definitionJson: JSON.stringify({
         promptTemplate: prompt,
         plan,

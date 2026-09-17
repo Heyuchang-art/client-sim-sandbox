@@ -59,6 +59,9 @@ export type SkillProposal = {
   definitionJson: string;
   metricsJson: string;
   sourceTaskId: string;
+  /** 审批状态；只有 approved 的技能会被后续任务复用。 */
+  status?: string;
+  createdAt?: number;
 };
 
 export type TaskStore = {
@@ -71,7 +74,12 @@ export type TaskStore = {
   saveStepStates: (records: StepStateRecord[]) => Promise<void>;
   saveFindings: (simulationId: string, findings: ComplianceFinding[]) => Promise<void>;
   proposeSkill: (proposal: SkillProposal) => Promise<void>;
+  /** 已批准技能：任务规划阶段据此复用既有编排。 */
+  listApprovedSkills: () => Promise<SkillProposal[]>;
+  /** 同名技能的下一个版本号，避免版本恒为 1 导致回滚永远找不到历史版本。 */
+  nextSkillVersion: (name: string) => Promise<number>;
 };
+
 
 export async function createD1Store(): Promise<TaskStore> {
   const db = await ensureDatabase();
@@ -221,6 +229,19 @@ export async function createD1Store(): Promise<TaskStore> {
           Date.now(),
         )
         .run();
+    },
+    async listApprovedSkills() {
+      const { results } = await db
+        .prepare("SELECT id, name, version, definition_json AS definitionJson, metrics_json AS metricsJson, source_task_id AS sourceTaskId, status, created_at AS createdAt FROM skills WHERE status = 'approved' ORDER BY version DESC LIMIT 50")
+        .all<SkillProposal>();
+      return results ?? [];
+    },
+    async nextSkillVersion(name) {
+      const row = await db
+        .prepare('SELECT MAX(version) AS version FROM skills WHERE name = ?')
+        .bind(name)
+        .first<{ version: number | null }>();
+      return (row?.version ?? 0) + 1;
     },
   };
 }

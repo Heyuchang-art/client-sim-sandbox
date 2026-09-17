@@ -37,7 +37,14 @@ export function createMemoryStore(seed: { prompt?: string; id?: string } = {}): 
     async saveStepStates() {},
     async saveFindings() {},
     async proposeSkill(proposal) {
-      skills.push(proposal);
+      skills.push({ ...proposal, status: proposal.status ?? 'candidate', createdAt: Date.now() });
+    },
+    async listApprovedSkills() {
+      return skills.filter((skill) => skill.status === 'approved');
+    },
+    async nextSkillVersion(name) {
+      const versions = skills.filter((skill) => skill.name === name).map((skill) => skill.version);
+      return (versions.length ? Math.max(...versions) : 0) + 1;
     },
     snapshot() {
       return { events: [...events], task: { ...task }, simulations: [...simulations], skills: [...skills] };

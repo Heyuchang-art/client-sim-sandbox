@@ -195,7 +195,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
     intent: '按确定性数值模型推演逐时间步的群体状态',
     async run(context) {
       const startedAt = Date.now();
-      const result = runSimulation(context.scenario, { strategyDrafts: context.strategyDrafts });
+      const result = runSimulation(context.scenario, { strategyDrafts: context.strategyDrafts, searchSpace: true });
       context.result = result;
       const recommended = result.strategies.find((strategy) => strategy.id === result.recommended) ?? result.strategies[0];
       for (const snapshot of recommended.snapshots) {
@@ -224,9 +224,12 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
         aggregateSignature: aggregateSignature(result),
         durationMs: Date.now() - startedAt,
         complianceFindings: result.findings,
+        utility: recommended.utility,
+        utilityWeights: result.utilityWeights,
+        strategySearch: result.strategySearch,
       };
       return {
-        audit: `${result.scenario.timeSteps} 个时间步、${result.customerCount} 名客户，引擎耗时 ${context.summary.durationMs} 毫秒；推荐「${recommended.name}」`,
+        audit: `${result.scenario.timeSteps} 个时间步、${result.customerCount} 名客户，引擎耗时 ${context.summary.durationMs} 毫秒；推荐「${recommended.name}」（避险收益 ${(recommended.utility.avoidance * 100).toFixed(2)}、触达成本 ${recommended.utility.cost.toFixed(3)}、唤醒 ${recommended.utility.wake.toFixed(3)}）`,
         payload: {
           recommended: recommended.id,
           engineMs: context.summary.durationMs,
@@ -234,6 +237,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
             id: strategy.id,
             name: strategy.name,
             score: Number(strategy.score.toFixed(4)),
+            utility: strategy.utility,
             peakPanic: Number(strategy.peakPanic.toFixed(4)),
             finalSell: Number(strategy.finalSell.toFixed(4)),
             complianceRisk: strategy.complianceRisk,
@@ -263,7 +267,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
       const blocked = findings.filter((finding) => finding.severity === '阻断');
       const pending = findings.filter((finding) => finding.status === '待审批');
       return {
-        audit: `${blocked.length} 项阻断已改写或拦截、${pending.length} 项待审批，规则版本 ${RULE_VERSION}`,
+        audit: `${blocked.length} 项阻断、${pending.length} 项待审批，规则版本 ${RULE_VERSION}；草稿级阻断已在模拟前由 Policy Gateway 强制执行（违规话术风险通道在数值推演中归零），此步为宏观方案与一人一策的复核`,
         payload: { total: findings.length, blocked: blocked.length, pending: pending.length, ruleVersion: RULE_VERSION },
         status: blocked.length ? 'blocked' : pending.length ? 'pending' : 'completed',
       };

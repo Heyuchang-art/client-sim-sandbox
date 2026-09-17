@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     targetSegment: body.targetSegment === 'all_customers' ? 'all_customers' : 'high_volatility_drawdown',
   };
   const startedAt = Date.now();
-  const result = runSimulation(scenario, { ablations: body.ablations });
+  const result = runSimulation(scenario, { ablations: body.ablations, searchSpace: true });
   const engineMs = Date.now() - startedAt;
   const simulationId = crypto.randomUUID();
   const audit = result.audit.map((entry) => ({ ...entry, at: entry.at ?? Date.now() }));

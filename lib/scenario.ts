@@ -34,7 +34,11 @@ export const defaultScenario: ScenarioConfig = {
   targetSegment: 'high_volatility_drawdown',
 };
 
-/** 目标客群筛选阈值：持仓回撤达到该百分比才进入高波动回撤客群。 */
+/**
+ * 目标客群筛选阈值：在基准冲击下持仓回撤主项达到该百分比才进入高波动回撤客群。
+ * 实际筛选按持仓弹性 beta 判定（beta >= 0.8 等价于基准冲击下回撤主项 >= 8%），
+ * 不含客户个体的 ±1.5 个百分点扰动，因此入选客户的期末回撤可能略低于 8%。
+ */
 export const segmentDrawdownThreshold = 8;
 /** 客群口径固定在基准冲击下评估，保证不同市场情景下目标客群结构一致、可跨情景对比。 */
 export const segmentReferenceShockPercent = 10;

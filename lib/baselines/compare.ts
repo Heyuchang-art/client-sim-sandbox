@@ -1,7 +1,7 @@
 import { bm25Search, type RetrievedDoc } from './rag';
 import {
-  aggregateSignature,
   runSimulation,
+
   strategyDefinitions,
   type AblationFlags,
   type StrategyId,
@@ -15,10 +15,13 @@ export type ComparisonOutcome = {
   label: string;
   /** 该模式实际使用的信息来源：模型草稿或内置规则近似。 */
   source: 'llm' | 'rule';
+  /** 该模式是否为降级实现：true 表示未接入模型，排序由内置规则近似得出，不得当作能力对照。 */
+  degraded: boolean;
   ranking: StrategyId[];
   recommended: StrategyId;
   rankAgreement: number;
-  stability: number;
+  /** 种子重采样稳定性：换随机种子后排序不变的占比；不运行数值模拟的模式为 null。 */
+  stability: number | null;
   latencyMs: number;
   peakPanic: number | null;
   finalSell: number | null;
@@ -77,10 +80,23 @@ export function rankAgreement(left: StrategyId[], right: StrategyId[]) {
   return total === 0 ? 0 : Number((concordant / total).toFixed(4));
 }
 
-function stabilityOf(signatures: string[]) {
-  if (signatures.length === 0) return 0;
-  const unique = new Set(signatures);
-  return Number((1 / unique.size).toFixed(4));
+/**
+ * 种子重采样稳定性：换随机种子后策略排序保持不变的比例。
+ * 同一场景同一种子重复运行对确定性引擎恒为相同结果，那不能说明稳定性，
+ * 因此这里把随机种子当作扰动来源重新采样。
+ */
+function seedStability(scenario: ScenarioConfig, ablation: AblationFlags, repeats: number) {
+  if (repeats <= 1) return 1;
+  const rankingOf = (seed: number) =>
+    runSimulation({ ...scenario, seed }, { ablations: ablation })
+      .strategies.map((strategy) => strategy.id)
+      .join('>');
+  const base = rankingOf(scenario.seed);
+  let agree = 0;
+  for (let index = 0; index < repeats; index += 1) {
+    if (rankingOf(scenario.seed + (index + 1) * 7919) === base) agree += 1;
+  }
+  return Number((agree / repeats).toFixed(4));
 }
 
 export type ComparisonOptions = {
@@ -110,19 +126,22 @@ export function compareModes(scenario: ScenarioConfig, options: ComparisonOption
       mode,
       label: modeLabels[mode],
       source: 'rule',
+      // 未配置模型密钥时，这两个模式不调用模型，排序来自关键词近似，属于降级实现。
+      degraded: true,
       ranking,
       recommended: ranking[0],
       rankAgreement: 0,
-      stability: stabilityOf(Array.from({ length: repeats }, () => ranking.join('>'))),
+      stability: null,
       latencyMs,
       peakPanic: null,
       finalSell: null,
       finalChurn: null,
       engineMs: null,
       retrieved: knowledge.map((doc) => doc.id),
-      note: mode === 'llm-rag'
-        ? '无模型密钥时按内置规则近似：以检索到的投教/合规语料覆盖度修正策略排序。'
-        : '无模型密钥时按内置规则近似：仅依据策略文本线索排序，不运行数值模拟。',
+      note: (mode === 'llm-rag'
+        ? '未接入模型，降级为内置规则近似：以检索到的投教/合规语料覆盖度修正策略排序。'
+        : '未接入模型，降级为内置规则近似：仅依据策略文本线索排序，不运行数值模拟。')
+        + '该行不是模型表现，不能作为能力对照结论。',
     });
   }
 
@@ -133,13 +152,8 @@ export function compareModes(scenario: ScenarioConfig, options: ComparisonOption
 
   for (const run of engineRuns) {
     const startedAt = Date.now();
-    const signatures: string[] = [];
-    let result = runSimulation(scenario, { ablations: run.ablation });
-    for (let index = 0; index < repeats; index += 1) {
-      const replay = runSimulation(scenario, { ablations: run.ablation });
-      signatures.push(aggregateSignature(replay));
-      if (index === 0) result = replay;
-    }
+    const result = runSimulation(scenario, { ablations: run.ablation });
+    const stability = seedStability(scenario, run.ablation, repeats);
     const latencyMs = Date.now() - startedAt;
     const ranking = rankingFromScores(result.strategies.map((strategy) => ({ id: strategy.id, score: strategy.score })));
     const recommended = result.strategies.find((strategy) => strategy.id === result.recommended) ?? result.strategies[0];
@@ -147,10 +161,11 @@ export function compareModes(scenario: ScenarioConfig, options: ComparisonOption
       mode: run.mode,
       label: modeLabels[run.mode],
       source: 'rule',
+      degraded: false,
       ranking,
       recommended: recommended.id,
       rankAgreement: 0,
-      stability: stabilityOf(signatures),
+      stability,
       latencyMs,
       peakPanic: Number(recommended.peakPanic.toFixed(4)),
       finalSell: Number(recommended.finalSell.toFixed(4)),
@@ -167,4 +182,34 @@ export function compareModes(scenario: ScenarioConfig, options: ComparisonOption
   }
 
   return { retrieved, outcomes };
+}
+
+export type ScenarioComparison = {
+  shock: number;
+  outcomes: Array<{ mode: ComparisonMode; recommended: StrategyId; rankAgreement: number; stability: number | null; degraded: boolean }>;
+};
+
+/**
+ * 多场景对照：一致的结论必须跨场景成立。
+ * 单场景的排序一致率会被同一份代码在另一个场景推翻，因此这里按跌幅档位分别报告，
+ * 避免用一格数字下一般性判断。
+ */
+export function compareModesAcrossScenarios(
+  base: ScenarioConfig,
+  shocks: number[] = [0.05, 0.2, 0.5],
+  options: ComparisonOptions = {},
+): ScenarioComparison[] {
+  return shocks.map((shock) => {
+    const { outcomes } = compareModes({ ...base, marketShock: -shock }, options);
+    return {
+      shock,
+      outcomes: outcomes.map((outcome) => ({
+        mode: outcome.mode,
+        recommended: outcome.recommended,
+        rankAgreement: outcome.rankAgreement,
+        stability: outcome.stability,
+        degraded: outcome.degraded,
+      })),
+    };
+  });
 }

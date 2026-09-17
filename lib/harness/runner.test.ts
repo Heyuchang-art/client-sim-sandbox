@@ -150,3 +150,46 @@ describe('取消与可观测性', () => {
     expect(snapshots[0].payload).toHaveProperty('step');
   });
 });
+
+describe('技能沉淀与复用', () => {
+  it('同名技能的版本号递增，回滚才有历史版本可退', async () => {
+    const store = createMemoryStore({ id: 'task-9', prompt });
+    await runTask({ store, config: null, taskId: 'task-9', prompt });
+    await runTask({ store, config: null, taskId: 'task-10', prompt });
+    const { skills } = store.snapshot();
+    expect(skills).toHaveLength(2);
+    expect(skills[0].version).toBe(1);
+    expect(skills[1].version).toBe(2);
+  });
+
+  it('已批准技能会被后续同类任务真正复用并留下事件', async () => {
+    const store = createMemoryStore({ id: 'task-11', prompt });
+    await runTask({ store, config: null, taskId: 'task-11', prompt });
+    const { skills } = store.snapshot();
+    // 人工批准第一条技能。
+    skills[0].status = 'approved';
+
+    await runTask({ store, config: null, taskId: 'task-12', prompt });
+    const { events } = store.snapshot();
+    const reused = events.filter((event) => event.type === 'skill.reused');
+    expect(reused).toHaveLength(1);
+    expect(reused[0].payload.name).toBe(skills[0].name);
+    expect(reused[0].payload.version).toBe(1);
+    // 复用必须真正接管编排：后一次任务计划来源标记为 skill，且工具序列来自技能记录。
+    const planned = events.filter((event) => event.type === 'task.status' && event.payload.planSource);
+    expect(planned.length).toBeGreaterThanOrEqual(2);
+    const adopted = planned.at(-1)!;
+    expect(adopted.payload.planSource).toBe('skill');
+    const plan = adopted.payload.plan as { steps: Array<{ tool: string }> };
+    expect(plan.steps.map((step) => step.tool)).toEqual(reused[0].payload.tools);
+    expect(reused[0].payload.version).toBe(1);
+  });
+
+  it('未批准的候选技能不会被复用', async () => {
+    const store = createMemoryStore({ id: 'task-13', prompt });
+    await runTask({ store, config: null, taskId: 'task-13', prompt });
+    await runTask({ store, config: null, taskId: 'task-14', prompt });
+    const { events } = store.snapshot();
+    expect(events.filter((event) => event.type === 'skill.reused')).toHaveLength(0);
+  });
+});

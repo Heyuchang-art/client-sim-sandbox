@@ -1,7 +1,9 @@
 import {
   RULE_VERSION,
+  checkSuitability,
+  productRiskByProduct,
   reviewCandidates,
-  suitabilityFinding,
+  severityLabels,
   type ComplianceFinding,
   type ComplianceCandidate,
 } from './compliance';
@@ -132,7 +134,10 @@ export type StrategyResult = {
   id: StrategyId;
   name: string;
   description: string;
+  /** 排序依据：避险收益 − 触达成本 − 唤醒效应，由场景与业务权重共同计算。 */
   score: number;
+  /** 效用的三项归因分解，用于向业务方解释推荐理由。 */
+  utility: StrategyUtility;
   snapshots: Snapshot[];
   customerStates: CustomerTimeState[][];
   peakPanic: number;
@@ -175,6 +180,28 @@ export type SimulationOptions = {
   ablations?: AblationFlags;
   /** 由模型生成、并已通过结构校验的候选策略文本；数值参数仍由确定性引擎持有。 */
   strategyDrafts?: StrategyDraftOverride[];
+  /** 业务效用权重：由目标决定更看重避险、预算还是客户体验；缺省按避险优先。 */
+  utilityWeights?: Partial<UtilityWeights>;
+  /** 是否在同一参数空间上做网格搜索。默认关闭，由 API 与异步任务显式开启。 */
+  searchSpace?: boolean;
+};
+
+/** 参数空间网格搜索的结果，用于说明三套锚点并非唯一可选方案。 */
+/**
+ * 参数空间网格搜索的结果，用于说明三套锚点并非唯一可选方案。
+ *
+ * 重要区分：搜索结果**不是可执行推荐**。搜索点只按参数直接评估，既没有生成草稿文本，
+ * 也没有经过 Policy Gateway 审查，因此净效用可能高于推荐锚点。界面必须同时展示这一
+ * 差异并说明原因，不能把搜索点当成系统推荐，否则会出现「推荐了一个自己算出来更差的方案」
+ * 的矛盾。
+ */
+export type StrategySearchOutcome = {
+  evaluated: number;
+  best: { levers: StrategyLevers; utility: StrategyUtility } | null;
+  top: Array<{ levers: StrategyLevers; utility: StrategyUtility }>;
+  /** 固定为 false：搜索点未经草稿生成与合规审查，不可直接执行。 */
+  executable: false;
+  note: string;
 };
 
 export type SimulationResult = {
@@ -188,6 +215,9 @@ export type SimulationResult = {
   strategies: StrategyResult[];
   recommended: StrategyId;
   findings: ComplianceFinding[];
+  /** 本次生效的效用权重，随结果一并留痕。 */
+  utilityWeights: UtilityWeights;
+  strategySearch: StrategySearchOutcome | null;
   explanationFactors: Array<{
     label: string;
     weight: number;
@@ -204,25 +234,60 @@ export const allAblationsOff: Required<AblationFlags> = {
   disableCompliance: false,
 };
 
-export const strategyDefinitions: Array<{
+/** 策略的三个可调杠杆：其余引擎参数由它们推导，避免出现互相矛盾的独立常数。 */
+export type StrategyLevers = {
+  /** 触达覆盖率：事件窗口内最终能触达的客户比例。 */
+  reach: number;
+  /** 人工深度：0 为纯自动消息，1 为逐人人工沟通。 */
+  depth: number;
+  /** 内容个性化程度：0 为通用话术，1 为逐人定制。 */
+  personalize: number;
+};
+
+/** 由杠杆推导出的引擎参数。 */
+export type StrategyParams = StrategyLevers & {
+  /** 达到目标覆盖率所需步数，反映人工作业的排队时间。 */
+  rampSteps: number;
+  /** 唤醒系数：主动触达本身引起的额外关注与焦虑。 */
+  wake: number;
+  /** 话术风险：绝对化、催促类表达带来的情绪放大效应。 */
+  toneRisk: number;
+};
+
+export type StrategyDefinition = StrategyParams & {
   id: StrategyId;
   name: string;
   description: string;
-  calming: number;
-  trustLift: number;
-  coverage: number;
-  toneRisk: number;
   draftText: string;
   compliantDraftText: string;
-}> = [
+};
+
+/**
+ * 由三个杠杆推导其余参数。
+ * - 人工深度决定爬坡步数：越依赖逐人沟通，越需要时间铺开。
+ * - 个性化程度决定唤醒强度：通用群发比定制沟通更容易惊动客户。
+ * - 话术风险来自「通用 + 大范围触达」的组合，即缺少个性化又覆盖面广时最危险。
+ */
+export function deriveStrategyParams(levers: StrategyLevers): StrategyParams {
+  const { reach, depth, personalize } = levers;
+  return {
+    ...levers,
+    rampSteps: depth <= 0 ? 1 : Math.round(clamp(1 + depth * 7, 1, 6)),
+    wake: Number((0.05 * (1 - 0.54 * personalize)).toFixed(4)),
+    toneRisk: Number((0.055 * (1 - personalize) * clamp(reach * 1.05)).toFixed(4)),
+  };
+}
+
+/**
+ * 三套锚点策略只是参数空间里的三个点，排序由引擎按场景计算得出，
+ * 不由常数预先决定——这是「策略比较」能够产生不同结论的前提。
+ */
+export const strategyAnchors: Array<{ id: StrategyId; name: string; description: string; levers: StrategyLevers; draftText: string; compliantDraftText: string }> = [
   {
     id: 'baseline',
     name: '不主动沟通',
     description: '保持现状，仅响应客户主动咨询。',
-    calming: 0,
-    trustLift: -0.035,
-    coverage: 0.08,
-    toneRisk: 0,
+    levers: { reach: 0.08, depth: 0, personalize: 0 },
     draftText: '本次市场调整期间不主动触达客户，等待客户主动咨询后再提供标准风险说明。',
     compliantDraftText: '本次市场调整期间不主动触达客户，等待客户主动咨询后再提供标准风险说明。',
   },
@@ -230,10 +295,7 @@ export const strategyDefinitions: Array<{
     id: 'broadcast',
     name: '统一风险提示',
     description: '向全部目标客户发送统一的市场风险通知。',
-    calming: 0.07,
-    trustLift: 0.02,
-    coverage: 0.95,
-    toneRisk: 0.055,
+    levers: { reach: 0.95, depth: 0.05, personalize: 0.1 },
     draftText: '向全部目标客户统一推送：请务必立即行动锁定收益，本轮调整后一定反弹，不要错过这次机会。',
     compliantDraftText: '向全部目标客户统一推送市场风险说明：解释本次下跌原因与产品波动特征，提示风险并提供人工服务入口，不包含催促、收益判断或反弹预期。',
   },
@@ -241,16 +303,59 @@ export const strategyDefinitions: Array<{
     id: 'segmented',
     name: '分群差异化沟通',
     description: '按风险偏好与心理特征生成差异化内容，优先干预关键节点。',
-    calming: 0.19,
-    trustLift: 0.095,
-    coverage: 0.86,
-    toneRisk: 0,
+    levers: { reach: 0.86, depth: 0.45, personalize: 0.9 },
     draftText: '按客户风险等级与心理特征分群触达，优先人工干预高影响节点，先说明风险再给选项。',
     compliantDraftText: '按客户风险等级与心理特征分群触达，优先人工干预高影响节点，先说明风险再给选项。',
   },
 ];
 
-function buildMacroCommunicationPlan(strategy: (typeof strategyDefinitions)[number], scenario: ScenarioConfig): MacroCommunicationPlan {
+export const strategyDefinitions: StrategyDefinition[] = strategyAnchors.map((anchor) => ({
+  ...deriveStrategyParams(anchor.levers),
+  id: anchor.id,
+  name: anchor.name,
+  description: anchor.description,
+  draftText: anchor.draftText,
+  compliantDraftText: anchor.compliantDraftText,
+}));
+
+/** 一次人工沟通的等效成本（以一条自动消息为 1）。 */
+export const depthCostFactor = 24;
+/** 成本归一化基准，使成本项与避险收益处于同一量级。 */
+const costNormalization = 10;
+
+/**
+ * 效用权重：由业务目标决定（更怕流失、更怕预算超支，还是更怕打扰客户）。
+ *
+ * 需要如实说明：避险收益（风险改善）与触达成本（预算）量纲不同，把两者相加必然需要一个
+ * 兑换率，而这个兑换率无法从合成数据里估计，只能由业务方设定。因此它是**业务参数**而非
+ * 模型参数，处理方式如下：
+ * - 界面上暴露实际取值，并随结果、审计与指标快照一同留痕；
+ * - 对本项目的结论只使用与权重无关的结构性质（跌幅越大、推荐方案的人工深度不下降等），
+ *   这些性质在任何权重下都必须成立，见 `npm run eval:strategies`；
+ * - 三种锚点的夺冠占比会随权重变化，只能连同敏感性曲面一起引用，不能单独当作发现。
+ * - cost：触达预算，以「一条自动消息」为单位；一次人工沟通按 depthCostFactor 折算。
+ * - wake：客户打扰成本（体验与品牌），与恐慌通道分开计，代表过度触达的独立代价。
+ */
+export type UtilityWeights = {
+  avoid: number;
+  cost: number;
+  wake: number;
+};
+
+export const defaultUtilityWeights: UtilityWeights = { avoid: 1, cost: 0.1, wake: 2 };
+
+/** 效用归因分解：三项之和即策略排序依据，可向评委逐项解释。 */
+export type StrategyUtility = {
+  /** 相对「不主动沟通」基线的避险收益，由恐慌、卖出、流失、投诉四项改善加权得到。 */
+  avoidance: number;
+  /** 归一化触达成本。 */
+  cost: number;
+  /** 唤醒效应总量。 */
+  wake: number;
+  total: number;
+};
+
+function buildMacroCommunicationPlan(strategy: StrategyDefinition, scenario: ScenarioConfig): MacroCommunicationPlan {
   const shock = `${Math.abs(scenario.marketShock * 100).toFixed(0)}%`;
   const hours = `${scenario.durationHours} 小时`;
   if (strategy.id === 'baseline') {
@@ -366,14 +471,33 @@ const productVolatility: Record<string, number> = {
   新能源主题基金: 1.34,
   红利低波组合: 0.62,
 };
-const productRiskByProduct: Record<string, number> = {
-  科技成长组合: 4,
-  量化增强产品: 3,
-  新能源主题基金: 5,
-  红利低波组合: 2,
-};
+// 产品风险等级统一取自合规规则模块（lib/compliance/rules.ts），避免两处口径不一致。
 const highVolatilityProducts = new Set(['科技成长组合', '量化增强产品', '新能源主题基金']);
 const surnames = ['陈', '李', '王', '张', '刘', '周', '徐', '许', '郑', '顾', '沈', '林'];
+
+const riskLevelOrder: Array<Customer['riskLevel']> = ['C1', 'C2', 'C3', 'C4', 'C5'];
+
+/** 因历史持仓或风险测评过期而越级持有产品的客户比例。 */
+export const overreachRate = 0.12;
+
+/** 风险承受等级的归一化位置：C1 = 0，C5 = 1。 */
+function riskTierOf(customer: Customer) {
+  return riskLevelOrder.indexOf(customer.riskLevel) / (riskLevelOrder.length - 1);
+}
+
+/**
+ * 适当性匹配的产品分配：多数客户持有风险等级不高于自身承受等级的产品；
+ * 少数客户因历史原因越级持有，这部分构成随客户结构变化的存量适当性风险。
+ */
+function pickProduct(risk: Customer['riskLevel'], random: () => number) {
+  const tolerance = riskLevelOrder.indexOf(risk) + 1;
+  const eligible = products.filter((product) => (productRiskByProduct[product] ?? 3) <= tolerance);
+  const beyond = products.filter((product) => (productRiskByProduct[product] ?? 3) > tolerance);
+  if (beyond.length > 0 && random() < overreachRate) {
+    return beyond[Math.floor(random() * beyond.length)];
+  }
+  return eligible[Math.floor(random() * eligible.length)];
+}
 
 function mulberry32(seed: number) {
   return () => {
@@ -462,7 +586,8 @@ export function generateCustomers(
   return Array.from({ length: count }, (_, index) => {
     const archetype = pickArchetype(random);
     const psychology = psychologyFor(archetype.name, random);
-    const product = products[index % products.length];
+    // 适当性匹配：多数客户持有风险等级不高于自身承受等级的产品。
+    const product = pickProduct(archetype.risk, random);
     const volatility = productVolatility[product] ?? 1;
     const holdingBeta = clamp(
       0.62 + psychology.ambition * 0.42 + psychology.herding * 0.24 - psychology.discipline * 0.16 +
@@ -517,11 +642,29 @@ const flatPsychology: Psychology = {
   trust: 0.5,
 };
 
+/**
+ * 关闭心理层的消融：六维心理参数取中性值，并**一并重算**由心理参数派生的
+ * 持仓弹性与回撤。否则心理层仍会通过持仓弹性继续影响结果，消融不彻底。
+ * 中性参数下不再叠加个体扰动，以便该层能被干净地移除。
+ */
 function flattenPsychology(customers: Customer[], marketShock: number) {
   return customers.map((customer) => {
     const psychology = { ...flatPsychology };
-    const panic = initialPanic(Math.abs(marketShock) * 100, psychology, customer.drawdown);
-    const next: Customer = { ...customer, psychology, panic };
+    const volatility = productVolatility[customer.product] ?? 1;
+    const holdingBeta = clamp(
+      0.62 + psychology.ambition * 0.42 + psychology.herding * 0.24 - psychology.discipline * 0.16 + (volatility - 1) * 0.55,
+      0.35,
+      1.9,
+    );
+    const drawdown = clamp(Math.abs(marketShock) * 100 * holdingBeta, 0.4, 45);
+    const panic = initialPanic(Math.abs(marketShock) * 100, psychology, drawdown);
+    const next: Customer = {
+      ...customer,
+      psychology,
+      panic,
+      holdingBeta: Number(holdingBeta.toFixed(3)),
+      drawdown: Number(drawdown.toFixed(1)),
+    };
     return { ...next, ...behaviorProbabilities(next) };
   });
 }
@@ -614,29 +757,54 @@ function buildAdjacency(customers: Customer[], relationships: RelationshipEdge[]
   return adjacency;
 }
 
+
 /**
- * 冲击形态：持续时间越长，压力衰减越慢、峰值越靠后。
- * ratio = 0（24 小时）时压力随步长衰减；ratio → 1（一周）时压力在窗口末端仍在累积。
+ * 冲击形态：持续时间越长，压力越持久、衰减越慢。
+ * ratio 的定义域覆盖 1 小时到一周，因此短于 24 小时的冲击也会更快衰减，
+ * 不会与 24 小时场景得到同一条压力曲线。
+ *
+ * 需要如实说明的限制：在现有参数下压力随步长单调衰减，因此压力峰值出现在
+ * 首个时间步，「时长越长峰值越靠后」并不成立；时长的影响体现在峰值高度与
+ * 衰减速度上。
  */
 export function shockShape(durationHours: number, progress: number) {
-  const ratio = clamp(Math.log(Math.max(durationHours, 1) / 24) / Math.log(7), 0, 1);
+  const ratio = clamp(Math.log(Math.max(durationHours, 1) / 24) / Math.log(24), -1, 1);
   const persistence = 1.02 + 0.16 * ratio;
   const spread = -0.22 + 0.3 * ratio;
   return persistence + spread * progress;
 }
 
+/** 策略在数值层面的原始产出；效用由 runSimulation 统一按基线对比计算。 */
+export type StrategyMetrics = {
+  peakPanic: number;
+  finalSell: number;
+  finalComplaint: number;
+  finalChurn: number;
+  finalTrust: number;
+  /** 归一化触达成本，与避险收益同量级。 */
+  touchCost: number;
+  /** 唤醒效应总量。 */
+  wake: number;
+  /** 期末实际触达覆盖率。 */
+  coverage: number;
+  /** 违规话术通道是否已被 Policy Gateway 清除。 */
+  toneSuppressed: boolean;
+};
+
 type StrategyRun = {
   result: Omit<StrategyResult, 'findings' | 'complianceRisk' | 'effectiveDraftText'>;
   customers: Customer[];
+  metrics: StrategyMetrics;
 };
 
 function runStrategy(
   baseCustomers: Customer[],
   relationships: RelationshipEdge[],
-  strategy: (typeof strategyDefinitions)[number],
+  strategy: StrategyDefinition,
   scenario: ScenarioConfig,
   seed: number,
   ablations: Required<AblationFlags>,
+  toneRisk: number,
 ): StrategyRun {
   const steps = scenario.timeSteps;
   const shockMagnitude = Math.abs(scenario.marketShock);
@@ -649,6 +817,7 @@ function runStrategy(
   const customerStates: CustomerTimeState[][] = [];
   const adjacency = buildAdjacency(customers, relationships);
   const hoursPerStep = stepHours(scenario);
+  const unitCost = 1 + depthCostFactor * strategy.depth;
 
   for (const customer of customers) {
     const p = customer.psychology;
@@ -663,27 +832,54 @@ function runStrategy(
     customer.peakStep = 0;
   }
   let previousMeanPanic = customers.reduce((sum, customer) => sum + customer.panic, 0) / customers.length;
+  let touchCostTotal = 0;
+  let wakeTotal = 0;
+  let reachTotal = 0;
 
   for (let step = 1; step <= steps; step += 1) {
     const previousPanics = new Map(customers.map((customer) => [customer.id, customer.panic]));
+    // 触达目标在本步更新前统一计算，避免同一时间步内的遍历顺序影响结果。
+    const focusByCustomer = new Map<string, number>();
+    for (const customer of customers) {
+      focusByCustomer.set(customer.id, clamp(0.6 + (riskScoreOf(customer) - 0.25) * 1.6, 0.5, 1.25));
+    }
+
+    const ramp = strategy.rampSteps <= 0 ? 1 : clamp(step / strategy.rampSteps);
+    const priorRamp = strategy.rampSteps <= 0 ? 1 : clamp((step - 1) / strategy.rampSteps);
     const progress = steps === 1 ? 0 : (step - 1) / (steps - 1);
     const marketStress = (0.095 + shockMagnitude * 0.82) * shockShape(scenario.durationHours, progress);
     let contagionTotal = 0;
     for (const customer of customers) {
       const p = customer.psychology;
-      const targetedBoost = strategy.id === 'segmented'
-        ? strategy.calming * (0.65 + p.trust * 0.45 + customer.influence * 0.15)
-        : strategy.calming;
-      const broadcastAlarm = strategy.id === 'broadcast'
-        ? strategy.toneRisk * (p.lossAversion + p.herding)
-        : 0;
+      const priorPanic = previousPanics.get(customer.id) ?? customer.panic;
+      // 逐客户触达门控：覆盖率只作用于真正被触达的客户，人工深度决定铺开速度。
+      const focus = focusByCustomer.get(customer.id) ?? 1;
+      const reached = clamp(strategy.reach * focus * ramp);
+      const newlyReached = clamp(reached - clamp(strategy.reach * focus * priorRamp));
+      // 个性化程度决定通用话术对风险两端客户的失配：越通用，越贴合不上极端客户。
+      const extremity = Math.abs(riskTierOf(customer) - 0.5) * 2;
+      const fit = 1 - (1 - strategy.personalize) * extremity * 0.8;
+      // 安抚由两部分构成：广覆盖带来的「信息真空填补」，以及个性化带来的贴合度。
+      // 前者解释为什么统一提示也有效，后者解释为什么高冲击下需要分群。
+      // 安抚由两部分构成：广覆盖带来的「信息真空填补」，以及个性化带来的贴合度。
+      // 再乘以「冲击紧迫度」——市场真的在跌时安抚才有价值，微跌时触达本身更像打扰。
+      const urgency = 0.45 + shockMagnitude * 2.2;
+      const boost = reached * urgency * (0.09 * (1 - strategy.personalize) + 0.22 * strategy.personalize * fit + 0.1 * strategy.depth);
+      const trustGain = reached * (0.015 * (1 - strategy.personalize) + 0.03 * strategy.personalize * fit + 0.02 * strategy.depth);
+      const alarm = toneRisk * (p.lossAversion + p.herding);
+      // 唤醒效应：主动触达会让原本平静的客户开始关注账户，覆盖面铺开得越快越明显。
+      const wake = strategy.wake * (1 - priorPanic) * newlyReached;
+      reachTotal += reached;
+      wakeTotal += wake;
+      touchCostTotal += unitCost * reached;
+
       let neighborEffect = 0;
       if (!ablations.disableContagion) {
         const neighbors = adjacency.get(customer.id) ?? [];
         let weightedPanic = 0;
         let totalWeight = 0;
         neighbors.forEach((edge) => {
-          const typeGain = edge.type === 'social' ? 1 : edge.type === 'similarity' ? 0.72 : strategy.id === 'segmented' ? 0.42 : 0.58;
+          const typeGain = edge.type === 'social' ? 1 : edge.type === 'similarity' ? 0.72 : strategy.depth > 0.2 ? 0.42 : 0.58;
           const weight = edge.weight * typeGain;
           weightedPanic += (previousPanics.get(edge.neighbor) ?? previousMeanPanic) * weight;
           totalWeight += weight;
@@ -699,17 +895,18 @@ function runStrategy(
         carriedPanic +
           marketStress * p.lossAversion +
           neighborEffect +
-          broadcastAlarm -
-          targetedBoost -
+          alarm +
+          wake -
+          boost -
           p.discipline * 0.09 -
           p.patience * 0.045 +
           noise,
       );
       p.trust = ablations.disableMemory
-        ? clamp(customer.psychology.trust + strategy.trustLift * (progress + 0.45))
-        : clamp(p.trust + strategy.trustLift * (0.45 + step / steps) - customer.panic * 0.012);
+        ? clamp(customer.psychology.trust + trustGain * (progress + 0.45))
+        : clamp(p.trust + trustGain - customer.panic * 0.012);
       Object.assign(customer, behaviorProbabilities(customer));
-      customer.complaint = clamp(logistic((customer.panic - 0.62) * 4.2 - p.trust * 2.3 + strategy.toneRisk * 7) * 0.42);
+      customer.complaint = clamp(logistic((customer.panic - 0.62) * 4.2 - p.trust * 2.3 + toneRisk * 7) * 0.42);
       customer.churn = clamp(logistic((0.45 - p.trust) * 5 + customer.complaint * 2.2) * 0.38);
       const riskScore = riskScoreOf(customer);
       if (riskScore > customer.peakRisk) {
@@ -736,7 +933,7 @@ function runStrategy(
       complaint: mean((customer) => customer.complaint),
       churn: mean((customer) => customer.churn),
       trust: mean((customer) => customer.psychology.trust),
-      coverage: clamp(strategy.coverage * (0.55 + step / steps * 0.52)),
+      coverage: clamp(reachTotal / (customers.length * step)),
       contagion: contagionTotal / customers.length,
     });
     customerStates.push(customers.map((customer) => ({
@@ -760,17 +957,14 @@ function runStrategy(
 
   const last = snapshots[snapshots.length - 1];
   const peakPanic = Math.max(...snapshots.map((snapshot) => snapshot.panic));
-  // 线性归一化（而非硬截断）：五个风险项与信任项的取值范围保证结果落在 [0,1]，
-  // 且不会出现多个策略同时饱和到 1.0 导致推荐顺序随冲击大小翻转。
-  const score = Number(
-    (0.84 - peakPanic * 0.27 - last.sell * 0.25 - last.complaint * 0.2 - last.churn * 0.12 + last.trust * 0.16).toFixed(6),
-  );
   return {
     result: {
       id: strategy.id,
       name: strategy.name,
       description: strategy.description,
-      score,
+      // 得分与归因由 runSimulation 在拿到基线后统一计算，此处不预设。
+      score: 0,
+      utility: { avoidance: 0, cost: 0, wake: 0, total: 0 },
       snapshots,
       customerStates,
       peakPanic,
@@ -781,10 +975,20 @@ function runStrategy(
       draftText: strategy.draftText,
       macroPlan: buildMacroCommunicationPlan(strategy, scenario),
     },
+    metrics: {
+      peakPanic,
+      finalSell: last.sell,
+      finalComplaint: last.complaint,
+      finalChurn: last.churn,
+      finalTrust: last.trust,
+      touchCost: Number((touchCostTotal / (customers.length * steps * costNormalization)).toFixed(6)),
+      wake: Number((wakeTotal / customers.length).toFixed(6)),
+      coverage: last.coverage,
+      toneSuppressed: toneRisk === 0 && strategy.toneRisk > 0,
+    },
     customers,
   };
 }
-
 function macroPlanText(plan: MacroCommunicationPlan) {
   return [
     plan.objective,
@@ -803,6 +1007,48 @@ function complianceRiskOf(findings: ComplianceFinding[]): '低' | '中' | '高' 
   return '低';
 }
 
+/**
+ * 存量适当性风险：客户自身持仓的风险等级超出其风险承受等级。
+ * 受影响客户数随客户结构与随机种子变化，因此该发现不再是各场景恒定的一条。
+ */
+function suitabilityFindings(strategy: string, customers: Customer[]): ComplianceFinding[] {
+  const gapOf = (customer: Customer) => customer.productRisk - (riskLevelOrder.indexOf(customer.riskLevel) + 1);
+  const groups = [
+    {
+      list: customers.filter((customer) => checkSuitability(customer.riskLevel, customer.productRisk) === 'block'),
+      rule: 'SUITABILITY-MATRIX-01',
+      severity: 'block' as const,
+      title: '存量持仓超越客户风险承受等级',
+    },
+    {
+      list: customers.filter((customer) => checkSuitability(customer.riskLevel, customer.productRisk) === 'review'),
+      rule: 'SUITABILITY-MATRIX-02',
+      severity: 'review' as const,
+      title: '存量持仓高于客户风险承受等级一档',
+    },
+  ];
+  return groups
+    .filter((group) => group.list.length > 0)
+    .map((group) => {
+      const worst = group.list.reduce((best, customer) => (gapOf(customer) > gapOf(best) ? customer : best), group.list[0]);
+      const share = ((group.list.length / customers.length) * 100).toFixed(1);
+      return {
+        id: `${strategy}-${group.rule}`,
+        rule: group.rule,
+        title: group.title,
+        severity: severityLabels[group.severity],
+        strategy,
+        detail: `目标客群中 ${group.list.length} 名客户（占 ${share}%）持有的产品风险等级超出其风险承受等级，最严重一例为 ${worst.id}（${worst.riskLevel} 客户 × ${worst.product} R${worst.productRisk}）。`,
+        evidence: `${group.list.length}/${customers.length} 名客户持仓与风险承受等级不匹配`,
+        excerpt: '',
+        index: -1,
+        length: 0,
+        status: '待审批' as const,
+        ruleVersion: RULE_VERSION,
+      };
+    });
+}
+
 function representativeStates(customers: Customer[], states: CustomerTimeState[]) {
   const stride = Math.max(1, Math.floor(customers.length / 5));
   return customers
@@ -812,11 +1058,93 @@ function representativeStates(customers: Customer[], states: CustomerTimeState[]
     .map(({ customer, index }) => ({ customer, state: states[index] }));
 }
 
+/**
+ * 参数空间网格：三套锚点只是这个空间里的三个点。
+ * 搜索体现「引擎能算出的更优参数组合」，而不是预先写死的推荐顺序。
+ */
+export function strategyLeversGrid(): StrategyLevers[] {
+  const grid: StrategyLevers[] = [];
+  for (const reach of [0.25, 0.6, 0.95]) {
+    for (const depth of [0, 0.25, 0.5]) {
+      for (const personalize of [0, 0.45, 0.9]) {
+        grid.push({ reach, depth, personalize });
+      }
+    }
+  }
+  return grid;
+}
+
+/**
+ * 效用以「不主动沟通」为参照系：避险收益是相对基线的改善量，
+ * 成本与唤醒是这次干预自身带来的代价。三项分开输出，可逐项向业务方解释。
+ */
+function utilityFrom(metrics: StrategyMetrics, baseline: StrategyMetrics, weights: UtilityWeights): StrategyUtility {
+  const avoidance =
+    0.3 * (baseline.peakPanic - metrics.peakPanic) +
+    0.3 * (baseline.finalSell - metrics.finalSell) +
+    0.25 * (baseline.finalChurn - metrics.finalChurn) +
+    0.15 * (baseline.finalComplaint - metrics.finalComplaint);
+  return {
+    avoidance: Number(avoidance.toFixed(6)),
+    cost: metrics.touchCost,
+    wake: metrics.wake,
+    total: Number((weights.avoid * avoidance - weights.cost * metrics.touchCost - weights.wake * metrics.wake).toFixed(6)),
+  };
+}
+
+/**
+ * 在「触达覆盖率 × 人工深度 × 内容个性化」三维空间上做网格搜索。
+ * 搜索点不带草稿文本，其话术参数直接取推导值；任何上线方案仍需通过 Policy Gateway。
+ */
+function searchStrategySpace(
+  baseCustomers: Customer[],
+  relationships: RelationshipEdge[],
+  scenario: ScenarioConfig,
+  seed: number,
+  ablations: Required<AblationFlags>,
+  weights: UtilityWeights,
+  baseline: StrategyMetrics,
+  recommended: StrategyResult,
+): StrategySearchOutcome {
+  const evaluated = strategyLeversGrid().map((levers, index) => {
+    const params = deriveStrategyParams(levers);
+    const run = runStrategy(
+      baseCustomers,
+      relationships,
+      {
+        ...params,
+        id: 'segmented',
+        name: `参数搜索点 ${index + 1}`,
+        description: '参数空间网格搜索候选点。',
+        draftText: '',
+        compliantDraftText: '',
+      },
+      scenario,
+      seed + 977 + index * 131,
+      ablations,
+      params.toneRisk,
+    );
+    return { levers, utility: utilityFrom(run.metrics, baseline, weights) };
+  });
+  const ranked = [...evaluated].sort((a, b) => b.utility.total - a.utility.total);
+  const best = ranked[0] ?? null;
+  return {
+    evaluated: ranked.length,
+    best,
+    top: ranked.slice(0, 3),
+    executable: false,
+    note: best && best.utility.total > recommended.utility.total
+      ? `搜索最优组合的净效用 ${(best.utility.total * 100).toFixed(2)} 高于推荐锚点「${recommended.name}」的 ${(recommended.utility.total * 100).toFixed(2)}。搜索点尚未生成草稿文本、也未经 Policy Gateway 审查，因此不直接作为推荐；如需落地，应先为其起草文案并送审。`
+      : `搜索最优组合的净效用未超过推荐锚点「${recommended.name}」，推荐保持为已通过合规审查的锚点方案。`,
+  };
+}
+
 export function runSimulation(scenario: ScenarioConfig = defaultScenario, options: SimulationOptions = {}): SimulationResult {
   // 真实计时：引擎耗时必须是实测值，不允许用规模公式估算。
   const startedAt = performance.now();
   const { customerCount, timeSteps: steps, seed } = scenario;
   const ablations: Required<AblationFlags> = { ...allAblationsOff, ...options.ablations };
+  const weights: UtilityWeights = { ...defaultUtilityWeights, ...options.utilityWeights };
   const pool = buildCustomerPool(scenario, ablations);
   const baseCustomers = pool.customers;
   const relationships = generateRelationships(baseCustomers, seed);
@@ -831,21 +1159,51 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario, option
       draftText: draftText ? draftText.slice(0, 400) : definition.draftText,
     };
   });
-  const runs = definitions.map((strategy, index) =>
-    runStrategy(baseCustomers, relationships, strategy, scenario, seed + index * 101, ablations),
-  );
 
+  // 合规属于硬边界，因此草稿审查前置于数值模拟：
+  // 被拦截的违规表达不会发出去，其情绪放大效应也不应计入行为推演。
+  const draftReviews = new Map<StrategyId, { blocked: boolean; findings: ComplianceFinding[]; effectiveText: string }>();
+  definitions.forEach((definition) => {
+    if (ablations.disableCompliance) {
+      draftReviews.set(definition.id, { blocked: false, findings: [], effectiveText: definition.draftText });
+      return;
+    }
+    const review = reviewCandidates(definition.name, [
+      {
+        label: '策略草稿',
+        text: definition.draftText,
+        scope: 'message',
+        compliantAlternative: definition.compliantDraftText,
+      },
+    ]);
+    draftReviews.set(definition.id, {
+      blocked: review.findings.some((finding) => finding.severity === '阻断'),
+      findings: review.findings.filter((finding) => finding.status === '已拦截'),
+      effectiveText: review.effectiveTexts[0] ?? definition.draftText,
+    });
+  });
+
+  const runs = definitions.map((strategy, index) => {
+    const review = draftReviews.get(strategy.id)!;
+    // 被拦截的话术风险通道归零：违规表达没有发出，其放大效应不再发生。
+    const toneRisk = review.blocked ? 0 : strategy.toneRisk;
+    return runStrategy(baseCustomers, relationships, strategy, scenario, seed + index * 101, ablations, toneRisk);
+  });
+
+  const baselineMetrics = runs[0].metrics;
   const reviewed = runs.map((run) => {
     const strategy = definitions.find((item) => item.id === run.result.id)!;
+    const draft = draftReviews.get(strategy.id)!;
     if (ablations.disableCompliance) {
       return {
-        result: { ...run.result, findings: [] as ComplianceFinding[], complianceRisk: '低' as const, effectiveDraftText: strategy.draftText },
-        customers: run.customers,
+        ...run,
+        findings: [] as ComplianceFinding[],
+        complianceRisk: '低' as const,
+        effectiveDraftText: strategy.draftText,
       };
     }
     const states = run.result.customerStates[run.result.customerStates.length - 1] ?? [];
     const candidates: ComplianceCandidate[] = [
-      { label: '策略草稿', text: strategy.draftText, scope: 'message', compliantAlternative: strategy.compliantDraftText },
       { label: '宏观方案', text: macroPlanText(run.result.macroPlan), scope: 'strategy' },
       ...representativeStates(baseCustomers, states).map(({ customer, state }) => ({
         label: `一人一策（${customer.archetype}）`,
@@ -854,41 +1212,60 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario, option
       })),
     ];
     const review = reviewCandidates(strategy.name, candidates);
-    const suitability = new Map<string, ComplianceFinding>();
-    baseCustomers.forEach((customer) => {
-      const finding = suitabilityFinding(strategy.name, customer.riskLevel, customer.product, customer.productRisk);
-      if (finding && !suitability.has(finding.rule)) suitability.set(finding.rule, finding);
-    });
-    const findings = [...review.findings, ...suitability.values()];
+    const findings = [...draft.findings, ...review.findings, ...suitabilityFindings(strategy.name, baseCustomers)];
     return {
-      result: {
-        ...run.result,
-        findings,
-        complianceRisk: complianceRiskOf(findings),
-        effectiveDraftText: review.effectiveTexts[0] ?? strategy.draftText,
-      },
-      customers: run.customers,
+      ...run,
+      findings,
+      complianceRisk: complianceRiskOf(findings),
+      effectiveDraftText: draft.effectiveText,
     };
   });
 
-  const strategies = reviewed.map((run) => run.result).sort((a, b) => b.score - a.score);
+  const strategies: StrategyResult[] = reviewed
+    .map((run) => {
+      const utility = utilityFrom(run.metrics, baselineMetrics, weights);
+      return {
+        ...run.result,
+        findings: run.findings,
+        complianceRisk: run.complianceRisk,
+        effectiveDraftText: run.effectiveDraftText,
+        score: utility.total,
+        utility,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
   const recommended = strategies[0].id;
   const recommendedRun = reviewed.find((run) => run.result.id === recommended) ?? reviewed[0];
-  const findings = recommendedRun.result.findings;
-  const allFindings = reviewed.flatMap((run) => run.result.findings);
-  const blockedFindings = allFindings.filter((finding) => finding.severity === '阻断');
-  const reviewFindings = allFindings.filter((finding) => finding.severity === '警告');
+
+  // 合规发现按全部候选策略汇总：只统计推荐策略会隐藏其他策略的真实命中。
+  const seenFinding = new Set<string>();
+  const findings = strategies
+    .flatMap((strategy) => strategy.findings)
+    .filter((finding) => {
+      if (seenFinding.has(finding.id)) return false;
+      seenFinding.add(finding.id);
+      return true;
+    });
+  const blockedFindings = findings.filter((finding) => finding.severity === '阻断');
+  const reviewFindings = findings.filter((finding) => finding.severity === '警告');
+  const blockedDrafts = [...draftReviews.values()].filter((review) => review.blocked).length;
   const averageDrawdown = baseCustomers.reduce((sum, customer) => sum + customer.drawdown, 0) / customerCount;
+  const recommendedStrategy = definitions.find((definition) => definition.id === recommended) ?? definitions[0];
+  const recommendedUtility = strategies[0].utility;
+
+  const strategySearch = options.searchSpace
+    ? searchStrategySpace(baseCustomers, relationships, scenario, seed, ablations, weights, baselineMetrics, strategies[0])
+    : null;
 
   const audit: AuditEntry[] = [
     { seq: 1, actor: 'Planner', action: '解析并拆解业务目标', result: `市场冲击 ${(scenario.marketShock * 100).toFixed(0)}%、持续 ${scenario.durationHours} 小时（每步 ${stepHours(scenario).toFixed(1)} 小时）、目标客群 ${segmentCriteria(scenario.targetSegment)}`, status: 'completed' },
     { seq: 2, actor: 'CustomerQueryTool', action: '筛选目标客户', result: `候选客户 ${pool.generatedCustomers} 名，客群口径命中 ${pool.matchedCustomers} 名，选取 ${customerCount} 名${pool.segmentRelaxed ? '（命中不足，已按回撤降序补足并标注）' : ''}`, status: pool.segmentRelaxed ? 'pending' : 'completed' },
     { seq: 3, actor: 'ProfileTool', action: '构建行为画像', result: `5 类原型、6 个心理因素，平均持仓回撤 ${averageDrawdown.toFixed(1)}%，随机种子 ${seed}`, status: 'completed' },
     { seq: 4, actor: 'RelationshipTool', action: '构建客户关系网络', result: `${relationships.length} 条关系边、3 类传播通道`, status: 'completed' },
-    { seq: 5, actor: 'StrategyTool', action: '生成候选沟通策略', result: `${definitions.length} 套候选策略，草稿文本已提交合规审查`, status: 'completed' },
+    { seq: 5, actor: 'StrategyTool', action: '生成候选沟通策略', result: `${definitions.length} 套锚点策略，参数为触达覆盖率／人工深度／内容个性化三项杠杆，其余参数由杠杆推导`, status: 'completed' },
     { seq: 6, actor: 'SimulationTool', action: '执行群体模拟', result: `${steps} 个时间步、市场冲击 ${(scenario.marketShock * 100).toFixed(0)}%、每步 ${stepHours(scenario).toFixed(1)} 小时、随机种子 ${seed}`, status: 'completed' },
-    { seq: 7, actor: 'PolicyGateway', action: '合规审查', result: `${blockedFindings.length} 项阻断、${reviewFindings.length} 项待审批，规则版本 ${RULE_VERSION}`, status: blockedFindings.length ? 'blocked' : reviewFindings.length ? 'pending' : 'completed' },
-    { seq: 8, actor: 'Reflector', action: '生成反思与候选技能', result: `推荐策略「${strategies[0].name}」，得分 ${(strategies[0].score * 100).toFixed(1)}，可沉淀为候选 Skill`, status: 'completed' },
+    { seq: 7, actor: 'PolicyGateway', action: '合规硬边界审查', result: `${blockedDrafts} 套策略草稿被拦截并改写、${blockedFindings.length} 项阻断、${reviewFindings.length} 项待审批，规则版本 ${RULE_VERSION}`, status: blockedFindings.length ? 'blocked' : reviewFindings.length ? 'pending' : 'completed' },
+    { seq: 8, actor: 'Reflector', action: '评估结果并沉淀候选技能', result: `推荐「${strategies[0].name}」：避险收益 ${(recommendedUtility.avoidance * 100).toFixed(2)}、触达成本 ${recommendedUtility.cost.toFixed(3)}、唤醒 ${recommendedUtility.wake.toFixed(3)}，净效用 ${(recommendedUtility.total * 100).toFixed(2)}`, status: 'completed' },
   ];
 
   return {
@@ -914,6 +1291,8 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario, option
     strategies,
     recommended,
     findings,
+    utilityWeights: weights,
+    strategySearch,
     explanationFactors: [
       {
         label: '市场损失冲击',
@@ -936,19 +1315,25 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario, option
       {
         label: '持续时间压力',
         weight: clamp(Math.log(Math.max(scenario.durationHours, 1) / 24) / Math.log(7), 0, 1),
-        evidence: `事件持续 ${scenario.durationHours} 小时、每步 ${stepHours(scenario).toFixed(1)} 小时；持续时间越长压力衰减越慢、峰值越靠后。`,
+        evidence: `事件持续 ${scenario.durationHours} 小时、每步 ${stepHours(scenario).toFixed(1)} 小时；持续时间越长压力衰减越慢，峰值高度上升，但在现有参数下压力峰值仍出现在首个时间步。`,
         direction: '风险上升',
       },
       {
-        label: '分群干预缓释',
-        weight: definitions.find((strategy) => strategy.id === recommended)?.calming ?? 0,
-        evidence: '按风险偏好、机构信任和网络影响力调整干预强度。',
+        label: '推荐策略缓释',
+        weight: clamp(recommendedStrategy.personalize),
+        evidence: `推荐策略触达覆盖率 ${(recommendedStrategy.reach * 100).toFixed(0)}%、人工深度 ${(recommendedStrategy.depth * 100).toFixed(0)}%、内容个性化 ${(recommendedStrategy.personalize * 100).toFixed(0)}%；覆盖率经逐客户门控生效，个性化决定通用话术对风险两端客户的失配程度。`,
         direction: '风险缓释',
       },
       {
+        label: '触达成本与唤醒',
+        weight: clamp(recommendedUtility.cost * 4 + recommendedUtility.wake * 12),
+        evidence: `推荐策略的触达成本 ${recommendedUtility.cost.toFixed(3)}、唤醒效应 ${recommendedUtility.wake.toFixed(3)}；主动联系越广越快，越容易惊动原本平静的客户。`,
+        direction: '风险上升',
+      },
+      {
         label: '合规硬边界',
-        weight: clamp((blockedFindings.length * 2 + reviewFindings.length) / 6),
-        evidence: `${blockedFindings.length} 项阻断已改写或拦截、${reviewFindings.length} 项待审批，规则版本 ${RULE_VERSION}。`,
+        weight: clamp((blockedDrafts * 2 + blockedFindings.length * 2 + reviewFindings.length) / 8),
+        evidence: `${blockedDrafts} 套策略草稿的违规表达被拦截并改写，其话术风险通道在模拟中归零；共 ${blockedFindings.length} 项阻断、${reviewFindings.length} 项待审批，规则版本 ${RULE_VERSION}。`,
         direction: '风险缓释',
       },
     ],
@@ -961,15 +1346,49 @@ export function aggregateSignature(result: SimulationResult) {
   const strategies = result.strategies.map((strategy) => [
     strategy.id,
     strategy.score.toFixed(6),
+    strategy.utility.avoidance.toFixed(6),
+    strategy.utility.cost.toFixed(6),
+    strategy.utility.wake.toFixed(6),
     strategy.peakPanic.toFixed(6),
     strategy.finalSell.toFixed(6),
     strategy.finalComplaint.toFixed(6),
     strategy.finalChurn.toFixed(6),
-    strategy.snapshots.map((snapshot) => `${snapshot.step}:${snapshot.panic.toFixed(6)}`).join(','),
+    strategy.snapshots.map((snapshot) => `${snapshot.step}:${snapshot.panic.toFixed(6)}:${snapshot.coverage.toFixed(6)}`).join(','),
   ].join('|'));
   return `${result.scenario.targetSegment}|${result.seed}|${result.customerCount}|${result.relationships.length}|${strategies.join('||')}`;
 }
 
 export function percent(value: number, digits = 1) {
   return `${(value * 100).toFixed(digits)}%`;
+}
+
+/**
+ * 用给定的杠杆组合跑一次单策略模拟。
+ * 供参数空间搜索与「只改覆盖率会改结果」的敏感性回归使用。
+ */
+export function simulateWithLevers(
+  scenario: ScenarioConfig,
+  levers: StrategyLevers,
+  seedOffset = 977,
+): StrategyMetrics {
+  const params = deriveStrategyParams(levers);
+  const pool = buildCustomerPool(scenario);
+  const relationships = generateRelationships(pool.customers, scenario.seed);
+  const run = runStrategy(
+    pool.customers,
+    relationships,
+    {
+      ...params,
+      id: 'segmented',
+      name: '参数点',
+      description: '',
+      draftText: '',
+      compliantDraftText: '',
+    },
+    scenario,
+    scenario.seed + seedOffset,
+    allAblationsOff,
+    params.toneRisk,
+  );
+  return run.metrics;
 }

@@ -7,6 +7,10 @@ function average(values: number[]) {
 
 /**
  * 记忆层只沉淀结构化业务事实与行为证据，绝不含模型原始思维链。
+ *
+ * 重要说明：这里的「行为倾向」与「偏好」都是由合成心理参数派生出的描述，
+ * 不是真实的交易或服务观测记录。措辞刻意回避具体天数、次数与历史事件，
+ * 以免被读成真实数据。
  */
 export function buildMemorySummaries(customers: Customer[]): MemorySummary[] {
   const groups = new Map<string, Customer[]>();
@@ -25,12 +29,12 @@ export function buildMemorySummaries(customers: Customer[]): MemorySummary[] {
     const drawdown = average(group.map((customer) => customer.drawdown));
 
     const behavior = lossAversion > 0.62 && discipline < 0.6
-      ? `历史回撤超过 ${drawdown.toFixed(0)}% 时倾向快速赎回，近 30 日出现 ${Math.round(herding * 6)} 次高频查看净值。`
+      ? `该原型损失厌恶偏高而纪律性偏低，回撤压力下更容易倾向快速赎回；本组合成参数下的平均持仓回撤为 ${drawdown.toFixed(0)}%。`
       : herding > 0.6
-        ? `在社交渠道获取信息较多，同群情绪变化时咨询量上升约 ${Math.round(herding * 40)}%。`
-        : `回撤期间以观察为主，历史回撤 ${drawdown.toFixed(0)}% 时未出现集中赎回。`;
+        ? `该原型从众敏感度偏高，社交渠道的情绪变化对其咨询行为影响更大；本组平均从众敏感度为 ${(herding * 100).toFixed(0)}%。`
+        : `该原型回撤期间以观察为主，不倾向集中赎回；本组合成参数下的平均持仓回撤为 ${drawdown.toFixed(0)}%。`;
     const preference = trust < 0.45
-      ? '近 30 日无主动咨询记录，对机构消息响应偏弱，更接受一对一人工沟通。'
+      ? '机构信任偏低，对批量消息响应意愿弱，更适合一对一人工沟通。'
       : patience > 0.65
         ? '更接受包含量化依据的简短说明，愿意讨论长期期限。'
         : '更接受即时、明确的处理路径说明，对强刺激与催促表达敏感。';

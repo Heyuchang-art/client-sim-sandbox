@@ -85,6 +85,8 @@ const sseEventTypes = [
   'step.failed',
   'simulation.snapshot',
   'compliance.finding',
+  'skill.reused',
+  'skill.reuse_rejected',
   'task.completed',
   'task.failed',
   'heartbeat',
@@ -151,6 +153,16 @@ export async function startServerTask(
         if (state.firstFeedbackMs === null) state = { ...state, firstFeedbackMs: Date.now() - startedAt };
         const payload = event.payload;
 
+        if (type === 'skill.reused') {
+          const name = typeof payload.name === 'string' ? payload.name : '未命名技能';
+          const version = typeof payload.version === 'number' ? payload.version : '?';
+          state = { ...state, notes: [...state.notes, `规划前命中已批准技能「${name}」v${version}，本次采用该技能沉淀的编排。`] };
+        }
+        if (type === 'skill.reuse_rejected') {
+          const name = typeof payload.name === 'string' ? payload.name : '未命名技能';
+          const reason = typeof payload.reason === 'string' ? payload.reason : '场景不匹配';
+          state = { ...state, notes: [...state.notes, `技能「${name}」的编排已按预解析采用，但真实抽取场景不匹配（${reason}），已记录该差异供人工核对。`] };
+        }
         if (type === 'task.status') {
           mode = (payload.mode as TaskMode) ?? mode;
           if (typeof payload.model === 'string') state = { ...state, model: payload.model as string };
