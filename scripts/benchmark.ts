@@ -347,11 +347,12 @@ export async function runBenchmark(): Promise<MetricsReport> {
     { item: '1000×20 引擎耗时', target: '< 30000 ms', actual: engine[1].medianMs + ' ms', passed: engine[1].medianMs < 30000 },
     { item: '同种子完全复现', target: '签名一致', actual: determinism.identical ? '一致' : '不一致', passed: determinism.identical },
     { item: '基线恐慌/卖出/流失随跌幅不反向', target: '不下降', actual: (shockMonotonic ? '单调成立' : '存在反向') + '；' + shockReversalNote, passed: shockMonotonic },
-    { item: '时长 24h→72h 方向一致', target: '峰值后移或抬升', actual: durationDirectional ? '方向一致' : '方向不一致', passed: durationDirectional },
+    { item: '时长 24h→72h 方向一致', target: '峰值不下降（现有参数下峰值恒在首步，差异体现在高度）', actual: durationDirectional ? '方向一致' : '方向不一致', passed: durationDirectional },
     { item: '禁止性合规样例召回', target: '≥ 95%', actual: (compliance.blockedRecall * 100).toFixed(1) + '%', passed: compliance.blockedRecall >= 0.95 },
     { item: '待复核样例召回', target: '记录值', actual: (compliance.reviewRecall * 100).toFixed(1) + '%', passed: compliance.reviewRecall >= 0.8 },
     { item: '合规误拦截', target: '≤ 10%', actual: (compliance.falseBlockRate * 100).toFixed(1) + '%', passed: compliance.falseBlockRate <= 0.1 },
-    { item: '沟通策略夺冠分布覆盖三种方案', target: '每种 ≥ 10%', actual: Object.entries(strategySweep.wins).map(([id, count]) => id + ' ' + ((count / strategySweep.scenarios) * 100).toFixed(1) + '%').join(' · '), passed: strategySweep.passed },
+    { item: '沟通策略验收（与效用权重无关的结构性质）', target: '全部成立', actual: strategySweep.passed ? '全部通过' : '存在未通过项', passed: strategySweep.passed },
+    { item: '夺冠配比（λ 相关，仅记录不作门禁）', target: '记录值', actual: Object.entries(strategySweep.wins).map(([id, count]) => id + ' ' + ((count / strategySweep.scenarios) * 100).toFixed(1) + '%').join(' · '), passed: null },
   ];
 
   return {

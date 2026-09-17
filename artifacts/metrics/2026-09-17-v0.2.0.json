@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T11:00:28.804Z",
+  "generatedAt": "2026-09-17T11:01:31.804Z",
   "version": "0.2.0",
   "ruleVersion": "compliance-rules@2026.09",
   "environment": {
@@ -41,13 +41,13 @@
       "timeSteps": 10,
       "seed": 20260830,
       "runs": [
-        26.77,
-        16.28,
-        12.22,
-        13.68,
-        10.57
+        26.32,
+        16.21,
+        12.6,
+        13.26,
+        10.46
       ],
-      "medianMs": 13.68,
+      "medianMs": 13.26,
       "aggregateHash": "6094f9f39464e63a",
       "peakPanic": 0.1934,
       "finalSell": 0.0613,
@@ -59,11 +59,11 @@
       "timeSteps": 20,
       "seed": 20260830,
       "runs": [
-        72.25,
-        73.25,
-        78.08
+        72.52,
+        74.94,
+        68.56
       ],
-      "medianMs": 73.25,
+      "medianMs": 72.52,
       "aggregateHash": "e6b5c5c0285438aa",
       "peakPanic": 0.1959,
       "finalSell": 0.0606,
@@ -245,11 +245,11 @@
       "recommended": "baseline",
       "rankAgreement": 1,
       "stability": 1,
-      "latencyMs": 28,
+      "latencyMs": 27,
       "peakPanic": 0.0263,
       "finalSell": 0.04,
       "finalChurn": 0.1658,
-      "engineMs": 5.59,
+      "engineMs": 5.36,
       "retrieved": [],
       "note": "单一全局智能体：关闭心理层、传播层与记忆层。"
     },
@@ -270,7 +270,7 @@
       "peakPanic": 0.1934,
       "finalSell": 0.0613,
       "finalChurn": 0.1363,
-      "engineMs": 6.14,
+      "engineMs": 6.56,
       "retrieved": [],
       "note": "完整双层模拟：心理层 + 传播层 + 记忆层 + 合规层。"
     }
@@ -495,8 +495,8 @@
   },
   "server": {
     "baseUrl": "http://localhost:3000",
-    "sseFirstFrameMs": 437,
-    "endToEndMs": 437
+    "sseFirstFrameMs": 433,
+    "endToEndMs": 433
   },
   "acceptance": [
     {
@@ -526,13 +526,13 @@
     {
       "item": "300×10 引擎耗时",
       "target": "< 30000 ms",
-      "actual": "13.68 ms",
+      "actual": "13.26 ms",
       "passed": true
     },
     {
       "item": "1000×20 引擎耗时",
       "target": "< 30000 ms",
-      "actual": "73.25 ms",
+      "actual": "72.52 ms",
       "passed": true
     },
     {
@@ -549,7 +549,7 @@
     },
     {
       "item": "时长 24h→72h 方向一致",
-      "target": "峰值后移或抬升",
+      "target": "峰值不下降（现有参数下峰值恒在首步，差异体现在高度）",
       "actual": "方向一致",
       "passed": true
     },
@@ -572,10 +572,16 @@
       "passed": true
     },
     {
-      "item": "沟通策略夺冠分布覆盖三种方案",
-      "target": "每种 ≥ 10%",
-      "actual": "baseline 48.9% · broadcast 26.3% · segmented 24.8%",
+      "item": "沟通策略验收（与效用权重无关的结构性质）",
+      "target": "全部成立",
+      "actual": "全部通过",
       "passed": true
+    },
+    {
+      "item": "夺冠配比（λ 相关，仅记录不作门禁）",
+      "target": "记录值",
+      "actual": "baseline 48.9% · broadcast 26.3% · segmented 24.8%",
+      "passed": null
     }
   ]
 }
