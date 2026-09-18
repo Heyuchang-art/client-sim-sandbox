@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T11:01:31.804Z",
+  "generatedAt": "2026-09-18T01:38:42.516Z",
   "version": "0.2.0",
   "ruleVersion": "compliance-rules@2026.09",
   "environment": {
@@ -41,13 +41,13 @@
       "timeSteps": 10,
       "seed": 20260830,
       "runs": [
-        26.32,
-        16.21,
-        12.6,
-        13.26,
-        10.46
+        37.97,
+        21.77,
+        17.38,
+        17.53,
+        15.08
       ],
-      "medianMs": 13.26,
+      "medianMs": 17.53,
       "aggregateHash": "6094f9f39464e63a",
       "peakPanic": 0.1934,
       "finalSell": 0.0613,
@@ -59,11 +59,11 @@
       "timeSteps": 20,
       "seed": 20260830,
       "runs": [
-        72.52,
-        74.94,
-        68.56
+        104.96,
+        104.25,
+        97.01
       ],
-      "medianMs": 72.52,
+      "medianMs": 104.25,
       "aggregateHash": "e6b5c5c0285438aa",
       "peakPanic": 0.1959,
       "finalSell": 0.0606,
@@ -136,7 +136,7 @@
   ],
   "durationDirectional": true,
   "segment": {
-    "criteria": "持有高波动产品、在 10% 基准冲击下回撤不低于 8% 的客户（客群口径跨情景稳定）",
+    "criteria": "持有高波动产品、在 10% 基准冲击下回撤不低于 8% 的客户（筛选条件在不同行情下保持一致，便于跨情景对比）",
     "generated": 900,
     "matched": 300,
     "excluded": 525,
@@ -245,11 +245,11 @@
       "recommended": "baseline",
       "rankAgreement": 1,
       "stability": 1,
-      "latencyMs": 27,
+      "latencyMs": 40,
       "peakPanic": 0.0263,
       "finalSell": 0.04,
       "finalChurn": 0.1658,
-      "engineMs": 5.36,
+      "engineMs": 8.05,
       "retrieved": [],
       "note": "单一全局智能体：关闭心理层、传播层与记忆层。"
     },
@@ -266,11 +266,11 @@
       "recommended": "baseline",
       "rankAgreement": 1,
       "stability": 1,
-      "latencyMs": 34,
+      "latencyMs": 50,
       "peakPanic": 0.1934,
       "finalSell": 0.0613,
       "finalChurn": 0.1363,
-      "engineMs": 6.56,
+      "engineMs": 9.98,
       "retrieved": [],
       "note": "完整双层模拟：心理层 + 传播层 + 记忆层 + 合规层。"
     }
@@ -495,8 +495,8 @@
   },
   "server": {
     "baseUrl": "http://localhost:3000",
-    "sseFirstFrameMs": 433,
-    "endToEndMs": 433
+    "sseFirstFrameMs": 678,
+    "endToEndMs": 679
   },
   "acceptance": [
     {
@@ -526,13 +526,13 @@
     {
       "item": "300×10 引擎耗时",
       "target": "< 30000 ms",
-      "actual": "13.26 ms",
+      "actual": "17.53 ms",
       "passed": true
     },
     {
       "item": "1000×20 引擎耗时",
       "target": "< 30000 ms",
-      "actual": "72.52 ms",
+      "actual": "104.25 ms",
       "passed": true
     },
     {

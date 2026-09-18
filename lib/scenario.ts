@@ -53,7 +53,7 @@ export const scenarioFieldLabels: Record<ScenarioField, string> = {
   marketShock: '市场跌幅',
   durationHours: '持续时间',
   customerCount: '客户数量',
-  timeSteps: '时间步',
+  timeSteps: '推演段数',
   seed: '随机种子',
   targetSegment: '目标客群',
 };

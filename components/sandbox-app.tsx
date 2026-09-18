@@ -78,6 +78,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import {
   parseScenarioPrompt,
+  scenarioFieldLabels,
   scenarioLabel,
   type ScenarioConfig,
 } from '@/lib/scenario';
@@ -349,7 +350,7 @@ function TaskCenter({ result, runState, prompt, setPrompt, onRun, onCancel, onNa
           </CardHeader>
           <CardContent>
             <Textarea aria-label="任务描述" value={prompt} onChange={(event) => setPrompt(event.target.value)} className="min-h-28 resize-none border-primary/15 bg-background/80 p-4 text-[15px] leading-7 shadow-inner" />
-            {runState.defaultedFields.length > 0 && <p className="mt-2 text-xs text-amber-700">未识别的参数已使用默认值：{runState.defaultedFields.join('、')}</p>}
+            {runState.defaultedFields.length > 0 && <p className="mt-2 text-xs text-amber-700">未识别的参数已使用默认值：{runState.defaultedFields.map((field) => scenarioFieldLabels[field as keyof ScenarioConfig] ?? field).join('、')}</p>}
             {runState.notes.length > 0 && <div className="mt-2 space-y-1 text-xs text-muted-foreground">{runState.notes.map((note, index) => <p key={'note-' + index}>{note}</p>)}</div>}
             {running && <div className="mt-4"><div className="mb-2 flex justify-between text-xs"><span>正在执行：{currentStep?.title ?? '建立任务计划'}</span><span className="font-mono">{runState.progress}%</span></div><Progress value={runState.progress} /></div>}
             {runState.phase === 'failed' && <Alert className="mt-4 border-rose-200 bg-rose-50 text-rose-900"><TriangleAlert /><AlertTitle><span title={'错误代码：' + (runState.errorCode ?? 'INTERNAL')}>{errorCodeLabels[runState.errorCode ?? 'INTERNAL'] ?? '任务失败'}</span></AlertTitle><AlertDescription>{runState.errorMessage ?? '任务没有跑完。可以点「重试」，或查看已经保存下来的备用结果。'}</AlertDescription></Alert>}
@@ -425,7 +426,7 @@ function CustomerInsights({ result }: { result: SimulationResult }) {
     ['流失', currentState.churn, 'bg-slate-500'],
   ] as const;
   return <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,.85fr)]">
-    <Card><CardHeader><div className="flex justify-between"><div><CardTitle>优先联系名单</CardTitle><CardDescription>按最难受的时刻排的：谁在推演过程中风险最高，谁排前面。</CardDescription></div><Badge variant="outline">{result.customerCount} 名客户</Badge></div></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>客户</TableHead><TableHead>原型</TableHead><TableHead>风险等级</TableHead><TableHead>回撤</TableHead><TableHead>峰值恐慌</TableHead><TableHead>优先级</TableHead></TableRow></TableHeader><TableBody>{result.customers.slice(0, 12).map((customer) => <TableRow key={customer.id} onClick={() => setSelectedId(customer.id)} className={`cursor-pointer ${customer.id === selected.id ? 'bg-primary/5' : ''}`}><TableCell><div className="font-medium">{customer.name}</div><div className="text-xs text-muted-foreground">{customer.id}</div></TableCell><TableCell>{customer.archetype}</TableCell><TableCell><Badge variant="outline">{customer.riskLevel}</Badge></TableCell><TableCell className="text-rose-600">-{customer.drawdown}%</TableCell><TableCell>{percent(customer.peakPanic, 0)}</TableCell><TableCell><Badge variant={customer.priority === '高' ? 'destructive' : customer.priority === '中' ? 'secondary' : 'outline'}>{customer.priority}</Badge></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
+    <Card><CardHeader><div className="flex justify-between"><div><CardTitle>优先联系名单</CardTitle><CardDescription>按最难受的时刻排的：谁在推演过程中风险最高，谁排前面。</CardDescription></div><Badge variant="outline">{result.customerCount} 名客户</Badge></div></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>客户</TableHead><TableHead>客户画像</TableHead><TableHead>风险等级</TableHead><TableHead>回撤</TableHead><TableHead>峰值恐慌</TableHead><TableHead>优先级</TableHead></TableRow></TableHeader><TableBody>{result.customers.slice(0, 12).map((customer) => <TableRow key={customer.id} onClick={() => setSelectedId(customer.id)} className={`cursor-pointer ${customer.id === selected.id ? 'bg-primary/5' : ''}`}><TableCell><div className="font-medium">{customer.name}</div><div className="text-xs text-muted-foreground">{customer.id}</div></TableCell><TableCell>{customer.archetype}</TableCell><TableCell><Badge variant="outline">{customer.riskLevel}</Badge></TableCell><TableCell className="text-rose-600">-{customer.drawdown}%</TableCell><TableCell>{percent(customer.peakPanic, 0)}</TableCell><TableCell><Badge variant={customer.priority === '高' ? 'destructive' : customer.priority === '中' ? 'secondary' : 'outline'}>{customer.priority}</Badge></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
     <div className="space-y-5"><Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle>{selected.name} · {selected.id}</CardTitle><CardDescription>{selected.archetype} · {selected.product}</CardDescription></div><Badge className="bg-rose-500/10 text-rose-700">{selected.priority}优先级 · 模拟期峰值</Badge></div></CardHeader><CardContent><div className="grid items-center gap-2 sm:grid-cols-[1.1fr_.9fr]"><ChartContainer config={{ value: { label: '性格权重', color: '#2563eb' } }} className="h-[250px] w-full"><RadarChart data={radarData} outerRadius="68%"><PolarGrid /><PolarAngleAxis dataKey="factor" tick={{ fontSize: 10 }} /><PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} /><Radar dataKey="value" stroke="var(--color-value)" fill="var(--color-value)" fillOpacity={0.22} strokeWidth={2} /></RadarChart></ChartContainer><div className="space-y-2.5">{factors.map(([label, value]) => <div key={label}><div className="mb-1 flex justify-between text-[11px]"><span>{label}</span><span className="font-mono text-muted-foreground">{percent(value, 0)}</span></div><Progress value={value * 100} /></div>)}</div></div><p className="mt-2 text-center text-xs text-muted-foreground">点击左侧任一客户，性格结构会即时切换。</p></CardContent></Card>
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><Activity className="size-4 text-primary" />个体动态行为</CardTitle><CardDescription>{recommended.name} · 第 {step} 段（共 {result.scenario.timeSteps} 段）</CardDescription></CardHeader><CardContent><details className="group"><summary className="flex cursor-pointer list-none items-center justify-between text-sm text-muted-foreground"><span>查看这位客户的六项行为倾向</span><span className="flex items-center gap-1 text-xs"><span className="group-open:hidden">展开</span><span className="hidden group-open:inline">收起</span><ChevronRight className="size-4 transition-transform group-open:rotate-90" /></span></summary><div className="mt-3 grid grid-cols-2 gap-3">{behaviors.map(([label, value, color]) => <div key={label} className="rounded-lg border bg-muted/25 p-3"><div className="flex items-center justify-between text-xs"><span>{label}</span><span className="font-mono font-semibold">{percent(value)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${value * 100}%` }} /></div></div>)}</div></details><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>市场冲击</span><span>个体响应</span><span>状态收敛</span></div><Slider value={[step]} min={1} max={result.scenario.timeSteps} step={1} onValueChange={(value) => setStep(Array.isArray(value) ? value[0] : Number(value))} /></div><div className="mt-3 flex justify-between text-xs"><span>恐慌 {percent(currentState.panic)}</span><span>信任 {percent(currentState.trust)}</span></div></CardContent></Card>
       <Card className="overflow-hidden border-primary/20">
@@ -534,15 +535,16 @@ function AuditView({ result, outcome, onNavigate }: { result: SimulationResult; 
         ? '与本地重算完全一致'
         : '与本地重算不一致';
 
-  const downloadReport = () => {
+  /** 本地兜底报告：仅在未提交服务端任务时使用，措辞与字段名必须与服务端模板保持一致。 */
+  const buildLocalReport = () => {
     const recommended = result.strategies.find((item) => item.id === result.recommended)!;
     const finalState = recommended.snapshots.at(-1)!;
-    const report = [
+    return [
       '证券客户行为沙盘 - 策略模拟报告',
       '',
       '场景：' + scenarioLabel(result.scenario),
-      '场景参数：marketShock=' + result.scenario.marketShock + '，durationHours=' + result.scenario.durationHours + '，customerCount=' + result.scenario.customerCount + '，timeSteps=' + result.scenario.timeSteps + '，seed=' + result.scenario.seed + '，targetSegment=' + result.scenario.targetSegment,
-      '每步粒度：' + result.scenarioMeta.stepHours.toFixed(2) + ' 小时',
+      '场景参数：跌幅 ' + (Math.abs(result.scenario.marketShock) * 100).toFixed(0) + '%，持续 ' + result.scenario.durationHours + ' 小时，客户 ' + result.scenario.customerCount + ' 名，共 ' + result.scenario.timeSteps + ' 段推演，随机种子 ' + result.scenario.seed,
+      '推演段数：共 ' + result.scenario.timeSteps + ' 段，每段 ' + result.scenarioMeta.stepHours.toFixed(2) + ' 小时',
       '客户数量：' + result.customerCount,
       '客户筛选条件：' + result.scenarioMeta.segmentCriteria,
       '随机种子：' + result.seed,
@@ -566,7 +568,24 @@ function AuditView({ result, outcome, onNavigate }: { result: SimulationResult; 
       '',
       '说明：本报告为基于合成脱敏客户的情景推演，不构成对真实客户行为的预测或投资建议。',
     ].join('\n');
-    const url = URL.createObjectURL(new Blob([report], { type: 'text/plain;charset=utf-8' }));
+  };
+
+  /**
+   * 导出报告优先取服务端生成的版本：同一份报告若客户端再实现一遍，
+   * 就会出现「服务端改了、客户端没改」的口径分叉，本轮已因此漏改过两次。
+   */
+  const downloadReport = async () => {
+    let text: string | null = null;
+    if (taskId) {
+      try {
+        const response = await fetch('/api/reports/' + taskId + '?format=markdown');
+        if (response.ok) text = await response.text();
+      } catch {
+        text = null;
+      }
+    }
+    if (!text) text = buildLocalReport();
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url; link.download = '证券客户行为沙盘-策略模拟报告.txt'; link.click(); URL.revokeObjectURL(url);
   };

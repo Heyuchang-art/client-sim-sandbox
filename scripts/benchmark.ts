@@ -253,7 +253,7 @@ export async function runBenchmark(): Promise<MetricsReport> {
       peakStep: peakStepOf(result),
     };
   });
-  // 单调性按“同一策略跨冲击”逐条比对：推荐策略会随冲击切换，混比会得出错误结论。
+  // 单调性按“同一策略跨冲击”逐条比对：推荐方案会随冲击切换，混比会得出错误结论。
   const monotonicLevels = [
     (strategy: (typeof shockRuns)[number]['strategies'][number]) => strategy.peakPanic,
     (strategy: (typeof shockRuns)[number]['strategies'][number]) => strategy.finalSell,
@@ -276,7 +276,7 @@ export async function runBenchmark(): Promise<MetricsReport> {
     ? '其余策略同样单调'
     : otherReversals.map((item) => `${item.id} 最大反向 ${item.reversal.toFixed(4)}`).join('、');
 
-  // 消融与时长对比固定在“不主动沟通”策略上，隔离推荐策略切换带来的干扰。
+  // 消融与时长对比固定在“不主动沟通”策略上，隔离推荐方案切换带来的干扰。
   const referenceStrategyId: StrategyId = 'baseline';
   const durationSensitivity = [24, 48, 72].map((durationHours) => {
     const scenario: ScenarioConfig = { ...base, durationHours };
@@ -428,13 +428,13 @@ export function formatMetrics(report: MetricsReport) {
     '',
     '## 参数敏感性',
     '',
-    '| 市场跌幅 | 推荐策略 | 推荐：恐慌峰值 | 基线：恐慌峰值 | 基线：卖出 | 基线：流失 | 峰值时间步 |',
+    '| 市场跌幅 | 推荐方案 | 推荐方案恐慌峰值 | 基线恐慌峰值 | 基线卖出 | 基线流失 | 峰值所在段 |',
     '| --- | --- | --- | --- | --- | --- | --- |',
   );
   for (const item of report.shockSensitivity) {
     lines.push('| ' + (item.shock * 100).toFixed(0) + '% | ' + item.recommended + ' | ' + item.peakPanic + ' | ' + item.baselinePeakPanic + ' | ' + item.baselineFinalSell + ' | ' + item.baselineFinalChurn + ' | ' + item.peakStep + ' |');
   }
-  lines.push('', '| 持续时间 | 每步小时 | 恐慌峰值（不主动沟通） | 峰值时间步 |', '| --- | --- | --- | --- |');
+  lines.push('', '| 持续时间 | 每段小时 | 恐慌峰值（不主动沟通） | 峰值所在段 |', '| --- | --- | --- | --- |');
   for (const item of report.durationSensitivity) {
     lines.push('| ' + item.durationHours + 'h | ' + item.stepHours + ' | ' + item.peakPanic + ' | ' + item.peakStep + ' |');
   }
@@ -452,7 +452,7 @@ export function formatMetrics(report: MetricsReport) {
     '',
     '## 对照模式',
     '',
-    '| 模式 | 推荐策略 | 排序一致率 | 稳定性 | 耗时(ms) | 说明 |',
+    '| 模式 | 推荐方案 | 排序一致率 | 稳定性 | 耗时(ms) | 说明 |',
     '| --- | --- | --- | --- | --- | --- |',
   );
   for (const mode of report.modes) {

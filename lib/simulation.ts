@@ -1134,8 +1134,8 @@ function searchStrategySpace(
     top: ranked.slice(0, 3),
     executable: false,
     note: best && best.utility.total > recommended.utility.total
-      ? `搜索最优组合的净效用 ${(best.utility.total * 100).toFixed(2)} 高于推荐锚点「${recommended.name}」的 ${(recommended.utility.total * 100).toFixed(2)}。搜索点尚未生成草稿文本、也未经 Policy Gateway 审查，因此不直接作为推荐；如需落地，应先为其起草文案并送审。`
-      : `搜索最优组合的净效用未超过推荐锚点「${recommended.name}」，推荐保持为已通过合规审查的锚点方案。`,
+      ? `搜索最优组合的综合推荐度 ${(best.utility.total * 100).toFixed(2)} 高于推荐方案「${recommended.name}」的 ${(recommended.utility.total * 100).toFixed(2)}。搜索点尚未生成话术草稿、也未经合规检查，因此不直接作为推荐；如需落地，应先为其起草文案并送审。`
+      : `搜索最优组合的综合推荐度未超过推荐方案「${recommended.name}」，推荐保持为已通过合规审查的方案。`,
   };
 }
 
