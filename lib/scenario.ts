@@ -60,7 +60,7 @@ export const scenarioFieldLabels: Record<ScenarioField, string> = {
 
 export function segmentCriteria(segment: TargetSegment) {
   return segment === 'high_volatility_drawdown'
-    ? `持有高波动产品、在 ${segmentReferenceShockPercent}% 基准冲击下回撤不低于 ${segmentDrawdownThreshold}% 的客户（客群口径跨情景稳定）`
+    ? `持有高波动产品、在 ${segmentReferenceShockPercent}% 基准冲击下回撤不低于 ${segmentDrawdownThreshold}% 的客户（筛选条件在不同行情下保持一致，便于跨情景对比）`
     : '全部在库客户';
 }
 

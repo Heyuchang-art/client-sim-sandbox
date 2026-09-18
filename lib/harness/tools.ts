@@ -11,9 +11,10 @@ import {
   type CustomerPool,
   type RelationshipEdge,
   type SimulationResult,
+  relativeUtilityBreakdown,
 } from '../simulation';
 import { buildMemorySummaries } from './memory';
-import { draftStrategiesWithModel, extractScenarioWithModel } from './planner';
+import { draftStrategiesWithModel, extractScenarioWithModel, planSteps } from './planner';
 import type {
   HarnessEventType,
   MemorySummary,
@@ -82,11 +83,19 @@ function archetypeStats(customers: CustomerPool['customers']) {
   }));
 }
 
+/**
+ * 步骤标题与说明的单一来源是 planner 的规范步骤定义。
+ * 这里不再各存一份，避免「改了一处、漏了另一处」——本轮已因此漏过一次。
+ */
+const stepMeta = (tool: ToolName) => {
+  const step = planSteps.find((item) => item.tool === tool);
+  return { title: step?.title ?? tool, intent: step?.intent ?? '' };
+};
+
 export const toolRegistry: Record<ToolName, HarnessTool> = {
   'scenario.extract': {
     name: 'scenario.extract',
-    title: '解析业务目标与场景参数',
-    intent: '把自然语言目标收敛为可追踪的结构化场景配置',
+    ...stepMeta('scenario.extract'),
     async run(context) {
       const planned = await extractScenarioWithModel(context.config, context.prompt);
       const { defaultedFields, notes, ...scenario } = planned.value;
@@ -112,8 +121,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
   },
   'customers.query': {
     name: 'customers.query',
-    title: '筛选目标客户',
-    intent: '按客群口径筛选候选客户并记录排除原因',
+    ...stepMeta('customers.query'),
     async run(context) {
       const pool = buildCustomerPool(context.scenario);
       context.pool = pool;
@@ -133,8 +141,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
   },
   'profile.build': {
     name: 'profile.build',
-    title: '构建行为画像与记忆',
-    intent: '聚合心理参数与历史服务记忆，形成结构化证据',
+    ...stepMeta('profile.build'),
     async run(context) {
       const customers = context.pool?.customers ?? [];
       context.memory = buildMemorySummaries(customers);
@@ -147,8 +154,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
   },
   'graph.build': {
     name: 'graph.build',
-    title: '构建客户关系网络',
-    intent: '生成相似性、社交影响与统一服务三类关系边',
+    ...stepMeta('graph.build'),
     async run(context) {
       const customers = context.pool?.customers ?? [];
       const relationships = generateRelationships(customers, context.scenario.seed);
@@ -165,8 +171,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
   },
   'strategy.draft': {
     name: 'strategy.draft',
-    title: '生成候选沟通策略',
-    intent: '产出宏观策略草稿与一人一策话术',
+    ...stepMeta('strategy.draft'),
     async run(context) {
       const customers = context.pool?.customers ?? [];
       const highRisk = customers
@@ -191,8 +196,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
   },
   'simulation.run': {
     name: 'simulation.run',
-    title: '执行群体行为模拟',
-    intent: '按确定性数值模型推演逐时间步的群体状态',
+    ...stepMeta('simulation.run'),
     async run(context) {
       const startedAt = Date.now();
       const result = runSimulation(context.scenario, { strategyDrafts: context.strategyDrafts, searchSpace: true });
@@ -248,8 +252,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
   },
   'compliance.review': {
     name: 'compliance.review',
-    title: '合规硬边界审查',
-    intent: '规则引擎扫描草稿并阻断高风险表达',
+    ...stepMeta('compliance.review'),
     async run(context) {
       const findings = context.result?.findings ?? [];
       context.findings = findings;
@@ -275,15 +278,21 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
   },
   'report.compose': {
     name: 'report.compose',
-    title: '输出报告与反思',
-    intent: '生成可审计结论并沉淀候选技能',
+    ...stepMeta('report.compose'),
     async run(context) {
       const result = context.result;
       if (!result || !context.summary) throw new Error('SIMULATION_FAILED');
       const recommended = result.strategies.find((strategy) => strategy.id === result.recommended) ?? result.strategies[0];
+      // 与界面同口径：综合推荐度以「不主动沟通」为 0 分基准，避免报告与界面数字对不上。
+      const baselineStrategy = result.strategies.find((strategy) => strategy.id === 'baseline') ?? result.strategies[0];
+      const breakdown = relativeUtilityBreakdown(
+        result.utilityWeights,
+        baselineStrategy.utility,
+        result.strategies.map((strategy) => strategy.utility),
+      );
       const lines = result.strategies.map(
-        (strategy) =>
-          `- ${strategy.name}：综合得分 ${(strategy.score * 100).toFixed(1)}，恐慌峰值 ${(strategy.peakPanic * 100).toFixed(1)}%，卖出倾向 ${(strategy.finalSell * 100).toFixed(1)}%，流失风险 ${(strategy.finalChurn * 100).toFixed(1)}%，合规风险 ${strategy.complianceRisk}`,
+        (strategy, index) =>
+          `- ${strategy.name}：综合推荐度 ${breakdown.all[index].total.toFixed(2)}（以「不主动沟通」为 0 分基准），恐慌峰值 ${(strategy.peakPanic * 100).toFixed(1)}%，卖出倾向 ${(strategy.finalSell * 100).toFixed(1)}%，流失风险 ${(strategy.finalChurn * 100).toFixed(1)}%，合规风险 ${strategy.complianceRisk}`,
       );
       const report = [
         '# 客户群体行为压力预演报告',
@@ -291,7 +300,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
         `- 场景：${scenarioLabel(result.scenario)}`,
         `- 目标客群：${result.scenarioMeta.segmentCriteria}`,
         `- 客户数量：${result.customerCount} 名（候选 ${result.scenarioMeta.generatedCustomers} 名）`,
-        `- 时间步：${result.scenario.timeSteps} 步，每步 ${result.scenarioMeta.stepHours} 小时`,
+        `- 推演段数：共 ${result.scenario.timeSteps} 段，每段 ${result.scenarioMeta.stepHours} 小时`,
         `- 随机种子：${result.seed}`,
         `- 合规规则版本：${result.scenarioMeta.ruleVersion}`,
         `- 执行模式：${context.scenarioSource === 'llm' && context.strategySource === 'llm' ? '模型参与规划与生成' : '规则模式 / 局部降级'}`,
