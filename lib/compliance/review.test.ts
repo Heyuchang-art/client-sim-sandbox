@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { checkSuitability } from './rules';
+import { checkSuitability, complianceRules, effectiveSeverity, statusForRule } from './rules';
 import { checkText, scanText } from './review';
 
 type CorpusItem = { id: string; label: 'blocked' | 'review' | 'clean'; text: string };
@@ -98,5 +98,25 @@ describe('适当性矩阵', () => {
   it('匹配或低于客户等级时放行', () => {
     expect(checkSuitability('C4', 4)).toBe('allow');
     expect(checkSuitability('C5', 3)).toBe('allow');
+  });
+});
+
+describe('规则处置状态', () => {
+  it('notice 级但属于必需项的规则，状态是「待审批」而不是「通过」', () => {
+    // 这三条规则（风险揭示、人工锚定）不构成违规，但没做到必须人工确认。
+    // 历史上另有一张按 severity 直接映射的表会把它们判成「通过」，与该逻辑分叉且零引用，
+    // 已删除；这条测试用来锁住唯一来源的行为。
+    const required = complianceRules.filter((rule) => rule.kind === 'required');
+    expect(required.length).toBeGreaterThan(0);
+    const pending = required.filter((rule) => statusForRule(rule, effectiveSeverity(rule, false)) === '待审批');
+    expect(pending.map((rule) => rule.id)).toContain('RISK-DISCLOSURE-01');
+    expect(pending.map((rule) => rule.id)).toContain('HUMAN-ANCHORING-01');
+  });
+
+  it('阻断与复核级的状态不受 kind 影响', () => {
+    const blockRule = complianceRules.find((rule) => rule.severity === 'block')!;
+    expect(statusForRule(blockRule, 'block')).toBe('已拦截');
+    const reviewRule = complianceRules.find((rule) => rule.severity === 'review')!;
+    expect(statusForRule(reviewRule, 'review')).toBe('待审批');
   });
 });

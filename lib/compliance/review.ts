@@ -5,6 +5,7 @@ import {
   effectiveSeverity,
   isNegated,
   severityLabels,
+  statusForRule,
   type ComplianceRule,
   type ComplianceScope,
   type ComplianceSeverity,
@@ -89,12 +90,6 @@ export function scanText(text: string, scope: ComplianceScope): ComplianceHit[] 
   return hits;
 }
 
-function statusFor(rule: ComplianceRule, severity: ComplianceSeverity): '已拦截' | '待审批' | '通过' {
-  if (severity === 'block') return '已拦截';
-  if (severity === 'review') return '待审批';
-  return rule.kind === 'required' ? '待审批' : '通过';
-}
-
 function detailFor(hit: ComplianceHit, label: string) {
   if (hit.index < 0) return `${label}：${hit.rule.advice}`;
   if (hit.negated) return `${label}：命中「${hit.matchedText}」，处于否定或免责语境，按提示记录。`;
@@ -129,7 +124,7 @@ export function reviewCandidates(strategy: string, candidates: ComplianceCandida
         excerpt: hit.excerpt,
         index: hit.index,
         length: hit.length,
-        status: statusFor(hit.rule, hit.severity),
+        status: statusForRule(hit.rule, hit.severity),
         remediation: hit.severity === 'block' ? '已切换为合规改写文本后继续执行。' : undefined,
         ruleVersion: RULE_VERSION,
       });
@@ -185,7 +180,7 @@ export function checkText(
     excerpt: hit.excerpt,
     index: hit.index,
     length: hit.length,
-    status: statusFor(hit.rule, hit.severity),
+    status: statusForRule(hit.rule, hit.severity),
     ruleVersion: RULE_VERSION,
   }));
   return { passed: !findings.some((finding) => finding.severity === '阻断'), findings, ruleVersion: RULE_VERSION };

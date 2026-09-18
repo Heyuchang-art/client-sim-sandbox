@@ -22,11 +22,19 @@ export const severityLabels: Record<ComplianceSeverity, '阻断' | '警告' | '�
   notice: '提示',
 };
 
-export const statusBySeverity: Record<ComplianceSeverity, '已拦截' | '待审批' | '通过'> = {
-  block: '已拦截',
-  review: '待审批',
-  notice: '通过',
-};
+/**
+ * 规则命中后的处置状态，全仓唯一来源。
+ *
+ * 注意 notice 级里还有一类 kind === 'required' 的规则（风险揭示、人工锚定等）：
+ * 它们不构成违规，但没有做到就必须人工确认，因此状态是「待审批」而不是「通过」。
+ * 这里曾经另有一张按 severity 直接映射的表，与这段逻辑对这三条规则给出不同答案，
+ * 且因为它零引用而长期没被发现；已删除，只保留这一份。
+ */
+export function statusForRule(rule: ComplianceRule, severity: ComplianceSeverity): '已拦截' | '待审批' | '通过' {
+  if (severity === 'block') return '已拦截';
+  if (severity === 'review') return '待审批';
+  return rule.kind === 'required' ? '待审批' : '通过';
+}
 
 export const riskLevels: RiskLevel[] = ['C1', 'C2', 'C3', 'C4', 'C5'];
 

@@ -2,11 +2,11 @@
  * 沟通策略验收扫描。
  *
  * 这里刻意区分两类结论：
- * 1. **与效用权重 λ 无关的结构性质**（本脚本的主要验收对象）：跌幅越大，推荐方案的人工深度
+ * 1. **与效用权重 效用权重 无关的结构性质**（本脚本的主要验收对象）：跌幅越大，推荐方案的人工深度
  *    不下降；接近零跌幅时不推荐高成本方案；极端下跌时不推荐零触达；推荐必须带三项归因分解；
- *    同种子完全复现。这些性质在任何 λ 下都必须成立，因此可以失败、有信息量。
- * 2. **λ 相关的夺冠配比**：三种锚点各自的夺冠占比是业务效用权重的函数，不是引擎的固有性质。
- *    脚本同时输出 λ 敏感性曲面，占比必须连同权重一起引用，不能单独作为「结论不写死」的证据。
+ *    同种子完全复现。这些性质在任何 效用权重 下都必须成立，因此可以失败、有信息量。
+ * 2. **与效用权重相关的夺冠配比**：三种锚点各自的夺冠占比是业务效用权重的函数，不是引擎的固有性质。
+ *    脚本同时输出 效用权重 敏感性曲面，占比必须连同权重一起引用，不能单独作为「结论不写死」的证据。
  */
 import { aggregateSignature, runSimulation, strategyDefinitions, type StrategyUtility } from '../lib/simulation';
 import type { ScenarioConfig, TargetSegment } from '../lib/scenario';
@@ -68,7 +68,7 @@ export function runStrategySweep(): StrategySweepReport {
 
   const checks: StrategySweepCheck[] = [{ item: '扫描场景数 ≥ 200', detail: String(total), passed: total >= 200 }];
 
-  // 与 λ 无关的结构性质一：跌幅越大，推荐方案的人工深度不下降。
+  // 与效用权重无关的结构性质一：跌幅越大，推荐方案的人工深度不下降。
   let series = 0;
   let violations = 0;
   let worstViolation = '';
@@ -99,12 +99,12 @@ export function runStrategySweep(): StrategySweepReport {
     }
   }
   checks.push({
-    item: '跌幅越大，推荐方案的人工深度不下降（与 λ 无关）',
+    item: '跌幅越大，推荐方案的人工深度不下降（与效用权重无关）',
     detail: `${series} 条序列，违反 ${violations} 条${worstViolation ? '（' + worstViolation + '）' : ''}`,
     passed: series > 0 && violations === 0,
   });
 
-  // 与 λ 无关的结构性质二：极端场景的边界一致性。
+  // 与效用权重无关的结构性质二：极端场景的边界一致性。
   const depthOfWinner = (run: Run) => run.anchors.find((anchor) => anchor.id === run.winner)?.depth ?? 0;
   const reachOfWinner = (run: Run) => run.anchors.find((anchor) => anchor.id === run.winner)?.reach ?? 0;
   const mildDepths = runs.filter((run) => Math.abs(Math.abs(run.scenario.marketShock) - 0.05) < 1e-9).map(depthOfWinner);
@@ -120,17 +120,17 @@ export function runStrategySweep(): StrategySweepReport {
     passed: severeReaches.length > 0 && Math.min(...severeReaches) >= 0.25,
   });
 
-  // 与 λ 无关的结构性质三：同种子完全复现。
+  // 与效用权重无关的结构性质三：同种子完全复现。
   const sample: ScenarioConfig = { marketShock: -0.3, durationHours: 48, customerCount: 300, timeSteps: 10, seed: 20260830, targetSegment: 'high_volatility_drawdown' };
   const reproducible = aggregateSignature(runSimulation(sample)) === aggregateSignature(runSimulation({ ...sample }));
-  checks.push({ item: '同种子聚合签名完全一致', detail: reproducible ? '一致' : '不一致', passed: reproducible });
+  checks.push({ item: '同种子结果指纹完全一致', detail: reproducible ? '一致' : '不一致', passed: reproducible });
 
-  // 与 λ 无关的结构性质四：归因三项可用。
+  // 与效用权重无关的结构性质四：归因三项可用。
   const attributionOk = runSimulation(sample).strategies.every((strategy) =>
     Number.isFinite(strategy.utility.avoidance) && Number.isFinite(strategy.utility.cost) && Number.isFinite(strategy.utility.wake));
   checks.push({ item: '每次推荐都有三项归因分解', detail: attributionOk ? '可用' : '缺失', passed: attributionOk });
 
-  // 与 λ 有关的夺冠配比：连同敏感性曲面一起报告。
+  // 与 效用权重 有关的夺冠配比：连同敏感性曲面一起报告。
   const weightGrid = [
     { cost: 0.1, wake: 0 },
     { cost: 0.1, wake: 2 },
@@ -165,11 +165,11 @@ export function runStrategySweep(): StrategySweepReport {
   if (extremeDepths[0] !== extremeDepths[1]) {
     limits.push(
       `打扰权重取极端值（${extreme.wake}）且时长压到 6 小时时，40%→50% 区间会出现一次深度回落：推荐由分群差异化沟通回到统一风险提示。` +
-        '实测机制是：唤醒罚分本身随恐慌上升而衰减（wake = 唤醒系数 × (1 − 上一步恐慌) × 本步新增触达），而 λ_wake 把它放大了 8 倍；广播式的唤醒基数更大，因此衰减带来的减负也更多（实测 50% 档广播式的唤醒罚分比 40% 档低约 42%），而人工成本不随恐慌衰减，于是推荐在高冲击档翻回低成本的广播式。需要特别指出：恐慌并未饱和（该场景峰值约 58% 到 84%，明显低于上限 1.0），因此这不是饱和效应。该配置不属于默认口径，已记录为模型迭代项；唤醒项是否应改为不随恐慌衰减，属于待评估的建模选择。',
+        '实测机制是：打扰代价罚分本身随恐慌上升而衰减（wake = 打扰代价系数 × (1 − 上一步恐慌) × 本步新增触达），而 效用权重_wake 把它放大了 8 倍；广播式的打扰代价基数更大，因此衰减带来的减负也更多（实测 50% 档广播式的打扰代价罚分比 40% 档低约 42%），而人工成本不随恐慌衰减，于是推荐在高冲击档翻回低成本的广播式。需要特别指出：恐慌并未饱和（该场景峰值约 58% 到 84%，明显低于上限 1.0），因此这不是饱和效应。该配置不属于默认口径，已记录为模型迭代项；打扰代价项是否应改为不随恐慌衰减，属于待评估的建模选择。',
     );
   }
-  limits.push('客户关系网络为合成网络，三类关系边是对三种传播机制的抽象代理，不具有真实社交网络的度分布特征。');
-  limits.push('五类客户原型为人工设定的合成原型，不是从真实客户数据聚类得出；心理参数尚未用真实分布校准。');
+  limits.push('客户关系网络为合成网络，三类客户关联是对三种传播机制的抽象代理，不具有真实社交网络的度分布特征。');
+  limits.push('五类客户画像为人工设定的合成原型，不是从真实客户数据聚类得出；心理参数尚未用真实分布校准。');
 
   return { scenarios: total, wins, weightSensitivity, limits, checks, passed: checks.every((check) => check.passed) };
 }
@@ -190,9 +190,9 @@ export function formatStrategySweep(report: StrategySweepReport) {
   }
   lines.push(
     '',
-    '## 夺冠配比及其对效用权重的敏感性（λ 相关，不可单独引用）',
+    '## 夺冠配比及其对效用权重的敏感性（与效用权重相关，不可单独引用）',
     '',
-    '| 触达成本权重 | 唤醒权重 | ' + Object.keys(report.wins).map((id) => id).join(' | ') + ' |',
+    '| 人力成本权重 | 打扰代价权重 | ' + Object.keys(report.wins).map((id) => id).join(' | ') + ' |',
     '| --- | --- | ' + Object.keys(report.wins).map(() => '---').join(' | ') + ' |',
   );
   for (const row of report.weightSensitivity) {
