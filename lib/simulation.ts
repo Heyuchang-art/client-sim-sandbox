@@ -1139,6 +1139,32 @@ function searchStrategySpace(
   };
 }
 
+/**
+ * 把效用换算成「相对不主动沟通」的四项分值，供引擎审计轨迹与界面共用。
+ *
+ * 共用是刻意的：这两处一度各写一份，结果界面把成本改成正值、引擎没跟上，
+ * 在推荐策略恰好是基线时因为差值为 0 而完全看不出来。
+ *
+ * 约定：成本与打扰取正值，表示「比不行动多付出的部分」，按公式逐项相减即可核对
+ *   综合推荐度 = 风险改善 − 人力成本 − 打扰代价
+ */
+export function relativeUtilityBreakdown(
+  weights: UtilityWeights,
+  baseline: StrategyUtility,
+  utilities: StrategyUtility[],
+) {
+  const total = (utility: StrategyUtility) =>
+    weights.avoid * utility.avoidance - weights.cost * utility.cost - weights.wake * utility.wake;
+  const baselineTotal = total(baseline);
+  const of = (utility: StrategyUtility) => ({
+    total: (total(utility) - baselineTotal) * 100,
+    avoidance: weights.avoid * (utility.avoidance - baseline.avoidance) * 100,
+    cost: weights.cost * (utility.cost - baseline.cost) * 100,
+    wake: weights.wake * (utility.wake - baseline.wake) * 100,
+  });
+  return { of, baseline: of(baseline), all: utilities.map(of) };
+}
+
 export function runSimulation(scenario: ScenarioConfig = defaultScenario, options: SimulationOptions = {}): SimulationResult {
   // 真实计时：引擎耗时必须是实测值，不允许用规模公式估算。
   const startedAt = performance.now();
@@ -1258,13 +1284,14 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario, option
    * 这里也按同一规则换算，成本与打扰同样以负值表示扣分项，
    * 否则展开执行记录的人会看到与主表矛盾的推荐度。
    */
-  const baselineTotal = -weights.cost * baselineMetrics.touchCost - weights.wake * baselineMetrics.wake;
-  const relativeUtility = (utility: StrategyUtility) => ({
-    total: (utility.total - baselineTotal) * 100,
-    avoidance: utility.avoidance * 100,
-    cost: -weights.cost * (utility.cost - baselineMetrics.touchCost) * 100,
-    wake: -weights.wake * (utility.wake - baselineMetrics.wake) * 100,
-  });
+  // 基线自身相对自己恒为 0，可直接用「避险收益为 0、成本与唤醒取基线原值」的效用对象表示。
+  const baselineUtility: StrategyUtility = {
+    avoidance: 0,
+    cost: baselineMetrics.touchCost,
+    wake: baselineMetrics.wake,
+    total: -weights.cost * baselineMetrics.touchCost - weights.wake * baselineMetrics.wake,
+  };
+  const relativeUtility = relativeUtilityBreakdown(weights, baselineUtility, []).of;
 
   const strategySearch = options.searchSpace
     ? searchStrategySpace(baseCustomers, relationships, scenario, seed, ablations, weights, baselineMetrics, strategies[0])
@@ -1274,11 +1301,11 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario, option
     { seq: 1, actor: '任务规划', action: '理解你的目标', result: `跌幅 ${(scenario.marketShock * 100).toFixed(0)}%、持续 ${scenario.durationHours} 小时（每段 ${stepHours(scenario).toFixed(1)} 小时）、目标客户 ${segmentCriteria(scenario.targetSegment)}`, status: 'completed' },
     { seq: 2, actor: '客户筛选', action: '筛出目标客户', result: `共生成候选客户 ${pool.generatedCustomers} 名，符合条件 ${pool.matchedCustomers} 名，本次选取 ${customerCount} 名${pool.segmentRelaxed ? '（符合条件的不足，已按回撤从高到低补足并标注）' : ''}`, status: pool.segmentRelaxed ? 'pending' : 'completed' },
     { seq: 3, actor: '客户画像', action: '整理客户情况', result: `5 类客户画像、6 项心理特征，平均持仓回撤 ${averageDrawdown.toFixed(1)}%，随机种子 ${seed}`, status: 'completed' },
-    { seq: 4, actor: '关系网络', action: '建立客户联系', result: `共 ${relationships.length} 条客户联系、3 种影响渠道`, status: 'completed' },
+    { seq: 4, actor: '关系网络', action: '建立客户关系网络', result: `共 ${relationships.length} 条客户联系、3 种影响渠道`, status: 'completed' },
     { seq: 5, actor: '方案起草', action: '起草沟通方案', result: `${definitions.length} 套候选方案，差异在「覆盖多少客户／投入多少人力／话术多贴合个人」三项上`, status: 'completed' },
     { seq: 6, actor: '群体推演', action: '推演客户反应', result: `分 ${steps} 段推演，跌幅 ${(scenario.marketShock * 100).toFixed(0)}%、每段 ${stepHours(scenario).toFixed(1)} 小时、随机种子 ${seed}`, status: 'completed' },
     { seq: 7, actor: '合规审查', action: '合规检查', result: `${blockedDrafts} 套方案的违规话术已在推演前拦下并改写、${blockedFindings.length} 项违规、${reviewFindings.length} 项待人工确认，规则版本 ${RULE_VERSION}`, status: blockedFindings.length ? 'blocked' : reviewFindings.length ? 'pending' : 'completed' },
-    { seq: 8, actor: '结果复盘', action: '汇总结论并留存技能', result: `建议「${strategies[0].name}」：综合推荐度 ${relativeUtility(recommendedUtility).total.toFixed(2)}（以「不主动沟通」为 0 分基准）= 风险改善 ${relativeUtility(recommendedUtility).avoidance.toFixed(2)} − 人力成本 ${relativeUtility(recommendedUtility).cost.toFixed(2)} − 打扰代价 ${relativeUtility(recommendedUtility).wake.toFixed(2)}；比次优方案「${strategies[1]?.name ?? '无'}」高 ${(relativeUtility(recommendedUtility).total - relativeUtility(strategies[1]?.utility ?? recommendedUtility).total).toFixed(2)} 分`, status: 'completed' },
+    { seq: 8, actor: '结果复盘', action: '生成报告', result: `建议「${strategies[0].name}」：综合推荐度 ${relativeUtility(recommendedUtility).total.toFixed(2)}（以「不主动沟通」为 0 分基准）= 风险改善 ${relativeUtility(recommendedUtility).avoidance.toFixed(2)} − 人力成本 ${relativeUtility(recommendedUtility).cost.toFixed(2)} − 打扰代价 ${relativeUtility(recommendedUtility).wake.toFixed(2)}；比次优方案「${strategies[1]?.name ?? '无'}」高 ${(relativeUtility(recommendedUtility).total - relativeUtility(strategies[1]?.utility ?? recommendedUtility).total).toFixed(2)} 分`, status: 'completed' },
   ];
 
   return {

@@ -6,6 +6,7 @@ import {
   defaultUtilityWeights,
   generateCustomers,
   matchesSegment,
+  relativeUtilityBreakdown,
   runSimulation,
   shockShape,
   simulateWithLevers,
@@ -390,5 +391,32 @@ describe('结论对效用权重的稳健性', () => {
     expect(high.peakPanic).toBeLessThan(low.peakPanic);
     expect(high.touchCost).toBeGreaterThan(low.touchCost);
     expect(high.coverage).toBeGreaterThan(low.coverage);
+  });
+});
+
+
+describe('相对分展示口径', () => {
+  it('四项相对分可按公式逐项相减得到综合推荐度（含推荐为非基线的场景）', () => {
+    // 10% 档推荐恰好是基线，差值为 0，正负号错误会被完全掩盖；这里必须覆盖非基线推荐的场景。
+    for (const marketShock of [-0.1, -0.2, -0.5]) {
+      const result = runSimulation({ ...defaultScenario, marketShock, customerCount: 300, timeSteps: 10 });
+      const baseline = result.strategies.find((item) => item.id === 'baseline')!;
+      const breakdown = relativeUtilityBreakdown(
+        result.utilityWeights,
+        baseline.utility,
+        result.strategies.map((item) => item.utility),
+      );
+      result.strategies.forEach((item, index) => {
+        const row = breakdown.all[index];
+        expect(row.total).toBeCloseTo(row.avoidance - row.cost - row.wake, 6);
+      });
+      // 基线自身四项全为 0
+      expect(breakdown.baseline.total).toBeCloseTo(0, 9);
+      expect(breakdown.baseline.cost).toBeCloseTo(0, 9);
+      expect(breakdown.baseline.wake).toBeCloseTo(0, 9);
+    }
+    // 确认确实覆盖到了「推荐不是基线」的情形
+    const severe = runSimulation({ ...defaultScenario, marketShock: -0.5, customerCount: 300, timeSteps: 10 });
+    expect(severe.recommended).not.toBe('baseline');
   });
 });

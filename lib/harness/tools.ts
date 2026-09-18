@@ -97,7 +97,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
       if (planned.model) context.model = planned.model;
       if (planned.note) context.notes.push(planned.note);
       return {
-        audit: `${scenarioLabel(scenario)}，每步 ${stepHours(scenario).toFixed(1)} 小时，随机种子 ${scenario.seed}`,
+        audit: `${scenarioLabel(scenario)}，每段 ${stepHours(scenario).toFixed(1)} 小时，随机种子 ${scenario.seed}`,
         payload: {
           scenario,
           defaultedFields,
@@ -118,7 +118,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
       const pool = buildCustomerPool(context.scenario);
       context.pool = pool;
       return {
-        audit: `候选客户 ${pool.generatedCustomers} 名，客群口径命中 ${pool.matchedCustomers} 名，选取 ${pool.customers.length} 名`,
+        audit: `从 ${pool.generatedCustomers} 名候选客户中筛出 ${pool.matchedCustomers} 名符合条件的，本次选取 ${pool.customers.length} 名`,
         payload: {
           generatedCustomers: pool.generatedCustomers,
           matchedCustomers: pool.matchedCustomers,
@@ -140,7 +140,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
       context.memory = buildMemorySummaries(customers);
       const stats = archetypeStats(customers);
       return {
-        audit: `${stats.length} 类原型、6 个心理因素，平均持仓回撤 ${average(customers.map((item) => item.drawdown)).toFixed(1)}%`,
+        audit: `${stats.length} 类客户画像、6 项心理特征，平均持仓回撤 ${average(customers.map((item) => item.drawdown)).toFixed(1)}%`,
         payload: { archetypes: stats, memory: context.memory },
       };
     },
@@ -158,7 +158,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
         return accumulator;
       }, {});
       return {
-        audit: `${relationships.length} 条关系边（相似性 ${byType.similarity ?? 0}、社交影响 ${byType.social ?? 0}、统一服务 ${byType.service ?? 0}）`,
+        audit: `${relationships.length} 条客户关联（兴趣相近 ${byType.similarity ?? 0}、互相影响 ${byType.social ?? 0}、同一服务覆盖 ${byType.service ?? 0}）`,
         payload: { total: relationships.length, byType },
       };
     },
@@ -184,7 +184,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
       if (planned.model) context.model = planned.model;
       if (planned.note) context.notes.push(planned.note);
       return {
-        audit: `${planned.value.length} 套候选策略（${planned.mode === 'llm' ? '模型生成' : planned.mode === 'degraded' ? '模型降级' : '内置模板'}），草稿已提交合规审查`,
+        audit: `${planned.value.length} 套候选方案（${planned.mode === 'llm' ? '模型生成' : planned.mode === 'degraded' ? '模型降级' : '内置模板'}），话术草稿已提交合规检查`,
         payload: { drafts: planned.value, source: planned.mode, note: planned.note ?? null, model: planned.model },
       };
     },
@@ -229,7 +229,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
         strategySearch: result.strategySearch,
       };
       return {
-        audit: `${result.scenario.timeSteps} 个时间步、${result.customerCount} 名客户，引擎耗时 ${context.summary.durationMs} 毫秒；推荐「${recommended.name}」（避险收益 ${(recommended.utility.avoidance * 100).toFixed(2)}、触达成本 ${recommended.utility.cost.toFixed(3)}、唤醒 ${recommended.utility.wake.toFixed(3)}）`,
+        audit: `分 ${result.scenario.timeSteps} 段推演、${result.customerCount} 名客户，计算耗时 ${context.summary.durationMs} 毫秒；推荐「${recommended.name}」（相对不主动沟通：风险改善 ${(recommended.utility.avoidance * 100).toFixed(2)}，人力成本与打扰代价见执行记录第 8 步）`,
         payload: {
           recommended: recommended.id,
           engineMs: context.summary.durationMs,
@@ -267,7 +267,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
       const blocked = findings.filter((finding) => finding.severity === '阻断');
       const pending = findings.filter((finding) => finding.status === '待审批');
       return {
-        audit: `${blocked.length} 项阻断、${pending.length} 项待审批，规则版本 ${RULE_VERSION}；草稿级阻断已在模拟前由 Policy Gateway 强制执行（违规话术风险通道在数值推演中归零），此步为宏观方案与一人一策的复核`,
+        audit: `${blocked.length} 项违规、${pending.length} 项待人工确认，规则版本 ${RULE_VERSION}；违规话术已在推演前拦下并改写，此步是对整体方案与逐客话术的复核`,
         payload: { total: findings.length, blocked: blocked.length, pending: pending.length, ruleVersion: RULE_VERSION },
         status: blocked.length ? 'blocked' : pending.length ? 'pending' : 'completed',
       };
@@ -311,7 +311,7 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
         '> 本报告基于合成脱敏客户数据，仅用于策略压力测试，不构成投资建议，也不代表真实客户预测准确率。',
       ].join('\n');
       return {
-        audit: `生成结构化报告与反思摘要，候选技能已提交人工审批`,
+        audit: `已生成报告，并把这次的做法存为一条候选技能，等待人工审批`,
         payload: { summary: context.summary, reportMarkdown: report },
       };
     },

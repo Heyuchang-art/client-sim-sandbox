@@ -91,6 +91,7 @@ import {
   type RelationshipEdge,
   type SimulationResult,
   type StrategyId,
+  relativeUtilityBreakdown,
 } from '@/lib/simulation';
 import { buildMemorySummaries } from '@/lib/harness/memory';
 import {
@@ -655,32 +656,16 @@ const skillStatusMeta: Record<string, { label: string; variant: 'default' | 'sec
   rejected: { label: '已拒绝', variant: 'destructive' },
 };
 
-/**
- * 把效用换算成「相对不主动沟通」的四项分值。
- *
- * 为什么必须四列一起换算：原始效用里成本与打扰各乘了效用权重，而权重不显示在界面上，
- * 读者直接按「风险改善 − 人力成本 − 打扰代价」相减会得到错误的排序，甚至得出与系统相反的结论。
- * 这里把四列都换成相对基准且同一量纲的数值，读者可以直接相减核对：
- *   综合推荐度 = 风险改善 − 人力成本 − 打扰代价
- * 成本与打扰以负值显示，表示它们是扣分项。
- */
+/** 界面侧的统一换算入口：直接复用引擎的 relativeUtilityBreakdown，避免两处口径或符号分叉。 */
 function relativeBreakdown(result: SimulationResult) {
-  const { avoid, cost: costWeight, wake: wakeWeight } = result.utilityWeights;
   const baseline = result.strategies.find((item) => item.id === 'baseline') ?? result.strategies[0];
-  const base = baseline.utility;
-  const baseTotal = avoid * base.avoidance - costWeight * base.cost - wakeWeight * base.wake;
-  const of = (utility: { avoidance: number; cost: number; wake: number }) => {
-    const total = avoid * utility.avoidance - costWeight * utility.cost - wakeWeight * utility.wake;
-    return {
-      total: (total - baseTotal) * 100,
-      avoidance: avoid * (utility.avoidance - base.avoidance) * 100,
-      // 取正值：表示「比不行动多付出的部分」，公式里以减号出现，读者可直接按公式相减
-      cost: costWeight * (utility.cost - base.cost) * 100,
-      wake: wakeWeight * (utility.wake - base.wake) * 100,
-    };
-  };
-  return { of, baseline: of(base) };
+  return relativeUtilityBreakdown(
+    result.utilityWeights,
+    baseline.utility,
+    result.strategies.map((item) => item.utility),
+  );
 }
+
 
 /** 可折叠卡片：把次要信息默认收起，降低首屏信息密度，需要时展开即可。 */
 function CollapsibleCard({
