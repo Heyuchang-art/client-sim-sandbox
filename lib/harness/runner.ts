@@ -35,6 +35,18 @@ export type RunnerOptions = {
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** 审计轨迹里显示的角色名：界面不出现 scenario.extract 这类内部工具 ID。 */
+const auditActorLabels: Record<string, string> = {
+  'scenario.extract': '任务规划',
+  'customers.query': '客户筛选',
+  'profile.build': '客户画像',
+  'graph.build': '关系网络',
+  'strategy.draft': '方案起草',
+  'simulation.run': '群体推演',
+  'compliance.review': '合规审查',
+  'report.compose': '结果复盘',
+};
+
 /** 已批准技能的复用匹配：客群口径一致、且市场冲击接近（±5 个百分点）。 */
 function skillDistance(skill: SkillProposal, scenario: ScenarioConfig) {
   try {
@@ -274,7 +286,8 @@ export async function runTask(options: RunnerOptions): Promise<TaskRunOutcome> {
 
       audit.push({
         seq: step.index,
-        actor: step.tool,
+        // 界面显示业务角色名，内部工具 ID 通过悬停保留，便于追溯
+        actor: auditActorLabels[step.tool] ?? step.tool,
         action: step.title,
         result: runResult.audit,
         status: runResult.status ?? 'completed',

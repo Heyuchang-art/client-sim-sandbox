@@ -611,7 +611,7 @@ function AuditView({ result, outcome, onNavigate }: { result: SimulationResult; 
       </div>
       <Button variant="outline" onClick={() => onNavigate('customers')}><UsersRound />查看要联系谁</Button>
     </CardContent></Card>
-    <Card><CardHeader><CardTitle>三套方案对比</CardTitle><CardDescription>四列都以「不主动沟通」为 0 分基准，可以直接相减核对：综合推荐度 = 风险改善 − 人力成本 − 打扰代价。正数表示比什么都不做更好，负数表示还不如不行动。成本与打扰为负值是扣分项。</CardDescription></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>方案</TableHead><TableHead>综合推荐度</TableHead><TableHead>风险改善</TableHead><TableHead>人力成本</TableHead><TableHead>打扰代价</TableHead></TableRow></TableHeader><TableBody>{result.strategies.map((item) => <TableRow key={item.id}><TableCell className="font-medium">{item.name}{item.id === result.recommended && <Badge className="ml-2">推荐</Badge>}</TableCell><TableCell className="font-mono font-semibold">{scores.of(item.utility).total.toFixed(2)}</TableCell><TableCell className="font-mono">{scores.of(item.utility).avoidance.toFixed(2)}</TableCell><TableCell className="font-mono">{scores.of(item.utility).cost.toFixed(2)}</TableCell><TableCell className="font-mono">{scores.of(item.utility).wake.toFixed(2)}</TableCell></TableRow>)}</TableBody></Table>
+    <Card><CardHeader><CardTitle>三套方案对比</CardTitle><CardDescription>四列都以「不主动沟通」为 0 分基准，可以直接相减核对：综合推荐度 = 风险改善 − 人力成本 − 打扰代价。正数表示比什么都不做更好，负数表示还不如不行动；人力成本与打扰代价是「比不行动多付出的部分」。</CardDescription></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>方案</TableHead><TableHead>综合推荐度</TableHead><TableHead>风险改善</TableHead><TableHead>人力成本</TableHead><TableHead>打扰代价</TableHead></TableRow></TableHeader><TableBody>{result.strategies.map((item) => <TableRow key={item.id}><TableCell className="font-medium">{item.name}{item.id === result.recommended && <Badge className="ml-2">推荐</Badge>}</TableCell><TableCell className="font-mono font-semibold">{scores.of(item.utility).total.toFixed(2)}</TableCell><TableCell className="font-mono">{scores.of(item.utility).avoidance.toFixed(2)}</TableCell><TableCell className="font-mono">{scores.of(item.utility).cost.toFixed(2)}</TableCell><TableCell className="font-mono">{scores.of(item.utility).wake.toFixed(2)}</TableCell></TableRow>)}</TableBody></Table>
       <details className="mt-4 border-t pt-3"><summary className="cursor-pointer list-none text-xs text-muted-foreground hover:text-foreground">展开各方案的风险指标与合规结论</summary>
         <Table className="mt-3"><TableHeader><TableRow><TableHead>方案</TableHead><TableHead>恐慌峰值</TableHead><TableHead>卖出倾向</TableHead><TableHead>流失风险</TableHead><TableHead>合规审查</TableHead></TableRow></TableHeader><TableBody>{result.strategies.map((item) => <TableRow key={item.id}><TableCell className="font-medium">{item.name}</TableCell><TableCell>{percent(item.peakPanic)}</TableCell><TableCell>{percent(item.finalSell)}</TableCell><TableCell>{percent(item.finalChurn)}</TableCell><TableCell><div className="flex items-center gap-2"><Badge variant={item.complianceRisk === '高' ? 'destructive' : item.complianceRisk === '中' ? 'secondary' : 'outline'}>{item.complianceRisk}</Badge><span className="text-[11px] text-muted-foreground">{item.findings.filter((finding) => finding.severity === '阻断').length} 项违规话术已拦下</span></div></TableCell></TableRow>)}</TableBody></Table></details>
     </CardContent></Card>
@@ -674,8 +674,9 @@ function relativeBreakdown(result: SimulationResult) {
     return {
       total: (total - baseTotal) * 100,
       avoidance: avoid * (utility.avoidance - base.avoidance) * 100,
-      cost: -costWeight * (utility.cost - base.cost) * 100,
-      wake: -wakeWeight * (utility.wake - base.wake) * 100,
+      // 取正值：表示「比不行动多付出的部分」，公式里以减号出现，读者可直接按公式相减
+      cost: costWeight * (utility.cost - base.cost) * 100,
+      wake: wakeWeight * (utility.wake - base.wake) * 100,
     };
   };
   return { of, baseline: of(base) };
