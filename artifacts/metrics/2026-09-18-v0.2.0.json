@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-18T01:44:17.260Z",
+  "generatedAt": "2026-09-18T05:08:19.315Z",
   "version": "0.2.0",
   "ruleVersion": "compliance-rules@2026.09",
   "environment": {
@@ -41,13 +41,13 @@
       "timeSteps": 10,
       "seed": 20260830,
       "runs": [
-        41.64,
-        24.68,
-        17.56,
-        21.95,
-        15.63
+        26.33,
+        15.35,
+        12.53,
+        15.45,
+        11.33
       ],
-      "medianMs": 21.95,
+      "medianMs": 15.35,
       "aggregateHash": "6094f9f39464e63a",
       "peakPanic": 0.1934,
       "finalSell": 0.0613,
@@ -59,11 +59,11 @@
       "timeSteps": 20,
       "seed": 20260830,
       "runs": [
-        104.78,
-        102.96,
-        113.96
+        72,
+        81.59,
+        70.41
       ],
-      "medianMs": 104.78,
+      "medianMs": 72,
       "aggregateHash": "e6b5c5c0285438aa",
       "peakPanic": 0.1959,
       "finalSell": 0.0606,
@@ -245,11 +245,11 @@
       "recommended": "baseline",
       "rankAgreement": 1,
       "stability": 1,
-      "latencyMs": 28,
+      "latencyMs": 26,
       "peakPanic": 0.0263,
       "finalSell": 0.04,
       "finalChurn": 0.1658,
-      "engineMs": 5.12,
+      "engineMs": 5.07,
       "retrieved": [],
       "note": "单一全局智能体：关闭心理层、传播层与记忆层。"
     },
@@ -266,11 +266,11 @@
       "recommended": "baseline",
       "rankAgreement": 1,
       "stability": 1,
-      "latencyMs": 33,
+      "latencyMs": 31,
       "peakPanic": 0.1934,
       "finalSell": 0.0613,
       "finalChurn": 0.1363,
-      "engineMs": 6.36,
+      "engineMs": 6.22,
       "retrieved": [],
       "note": "完整双层模拟：心理层 + 传播层 + 记忆层 + 合规层。"
     }
@@ -495,8 +495,8 @@
   },
   "server": {
     "baseUrl": "http://localhost:3000",
-    "sseFirstFrameMs": 522,
-    "endToEndMs": 523
+    "sseFirstFrameMs": 346,
+    "endToEndMs": 347
   },
   "acceptance": [
     {
@@ -526,13 +526,13 @@
     {
       "item": "300×10 引擎耗时",
       "target": "< 30000 ms",
-      "actual": "21.95 ms",
+      "actual": "15.35 ms",
       "passed": true
     },
     {
       "item": "1000×20 引擎耗时",
       "target": "< 30000 ms",
-      "actual": "104.78 ms",
+      "actual": "72 ms",
       "passed": true
     },
     {
