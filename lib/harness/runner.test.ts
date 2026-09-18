@@ -193,3 +193,24 @@ describe('技能沉淀与复用', () => {
     expect(events.filter((event) => event.type === 'skill.reused')).toHaveLength(0);
   });
 });
+
+  it('复用技能只继承工具序列，步骤文案取当前版本', async () => {
+    const store = createMemoryStore({ id: 'task-15', prompt });
+    await runTask({ store, config: null, taskId: 'task-15', prompt });
+    const { skills } = store.snapshot();
+    // 伪造一条「旧版本」技能：工具序列合法，但文案是过期的。
+    skills[0].status = 'approved';
+    const definition = JSON.parse(skills[0].definitionJson) as { plan: { steps: Array<{ tool: string; title: string; intent: string }> } };
+    definition.plan.steps = definition.plan.steps.map((step) => ({ ...step, title: '过期标题', intent: '过期说明' }));
+    skills[0].definitionJson = JSON.stringify(definition);
+
+    await runTask({ store, config: null, taskId: 'task-16', prompt });
+    const { events } = store.snapshot();
+    const planned = events.filter((event) => event.type === 'task.status' && event.payload.planSource === 'skill').at(-1);
+    expect(planned).toBeDefined();
+    const steps = (planned!.payload.plan as { steps: Array<{ tool: string; title: string }> }).steps;
+    expect(steps.map((step) => step.tool)).toEqual(definition.plan.steps.map((step) => step.tool));
+    // 文案必须来自当前版本，不能把旧技能的过期文案带进新版界面。
+    expect(steps.every((step) => step.title !== '过期标题')).toBe(true);
+    expect(steps[0].title).toBe('理解你的目标');
+  });

@@ -5,7 +5,7 @@ import { defaultPlan, planTask } from './planner';
 import { toolRegistry, type HarnessContext } from './tools';
 import type { SkillProposal, TaskStore } from './store';
 import { buildSimulationRecord, buildStepStates } from './persist';
-import type { HarnessEvent, HarnessEventType, TaskErrorCode, TaskMode, TaskPlan, TaskStatus } from './types';
+import type { HarnessEvent, HarnessEventType, PlanStep, TaskErrorCode, TaskMode, TaskPlan, TaskStatus } from './types';
 
 export class TaskCancelledError extends Error {
   readonly code = 'CANCELLED' as const;
@@ -61,26 +61,32 @@ async function findReusableSkill(store: TaskStore, scenario: ScenarioConfig): Pr
  * 取出技能里沉淀的编排。只有当保存的工具序列完整且每个工具都合法时才采用，
  * 否则回落到常规规划，避免一条损坏的技能记录把任务带进死路。
  */
+/**
+ * 取出技能里沉淀的编排。只有当保存的工具序列完整且每个工具都合法时才采用，
+ * 否则回落到常规规划，避免一条损坏的技能记录把任务带进死路。
+ *
+ * 注意：技能沉淀的是「工作方法」（用哪些工具、什么顺序），不是界面文案。
+ * 因此这里只采用工具序列，步骤名与说明一律取当前版本的规范定义，
+ * 否则旧技能会把过期的界面文案带进新版本。
+ */
 function skillPlan(skill: SkillProposal): TaskPlan | null {
   try {
     const parsed = JSON.parse(skill.definitionJson) as { plan?: TaskPlan };
     const plan = parsed.plan;
     if (!plan || !Array.isArray(plan.steps) || plan.steps.length === 0) return null;
-    const known = new Set(Object.keys(toolRegistry));
-    const steps = plan.steps
-      .filter((step) => step && typeof step.tool === 'string' && known.has(step.tool))
-      .map((step) => ({ index: 0, tool: step.tool, title: step.title ?? step.tool, intent: step.intent ?? '' }));
-    if (steps.length !== plan.steps.length) return null;
-    return {
-      objective: plan.objective ?? '复用已批准技能的编排。',
-      steps: steps.map((step, index) => ({ ...step, index: index + 1 })),
-      source: 'skill',
-    };
+    const canonical = new Map(defaultPlan().steps.map((step) => [step.tool, step]));
+    const steps: PlanStep[] = [];
+    for (const step of plan.steps) {
+      const known = step && typeof step.tool === 'string' ? canonical.get(step.tool) : undefined;
+      if (!known) return null;
+      steps.push({ ...known, index: steps.length + 1 });
+    }
+    // 目标描述同样取当前版本的规范定义：技能只沉淀工具编排，不携带历史文案。
+    return { objective: defaultPlan().objective, steps, source: 'skill' };
   } catch {
     return null;
   }
 }
-
 
 export type TaskRunOutcome = {
   status: TaskStatus;

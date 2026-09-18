@@ -1253,19 +1253,32 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario, option
   const recommendedStrategy = definitions.find((definition) => definition.id === recommended) ?? definitions[0];
   const recommendedUtility = strategies[0].utility;
 
+  /**
+   * 审计轨迹与界面必须同口径：界面把四项都换算成相对「不主动沟通」的分值，
+   * 这里也按同一规则换算，成本与打扰同样以负值表示扣分项，
+   * 否则展开执行记录的人会看到与主表矛盾的推荐度。
+   */
+  const baselineTotal = -weights.cost * baselineMetrics.touchCost - weights.wake * baselineMetrics.wake;
+  const relativeUtility = (utility: StrategyUtility) => ({
+    total: (utility.total - baselineTotal) * 100,
+    avoidance: utility.avoidance * 100,
+    cost: -weights.cost * (utility.cost - baselineMetrics.touchCost) * 100,
+    wake: -weights.wake * (utility.wake - baselineMetrics.wake) * 100,
+  });
+
   const strategySearch = options.searchSpace
     ? searchStrategySpace(baseCustomers, relationships, scenario, seed, ablations, weights, baselineMetrics, strategies[0])
     : null;
 
   const audit: AuditEntry[] = [
-    { seq: 1, actor: 'Planner', action: '解析并拆解业务目标', result: `市场冲击 ${(scenario.marketShock * 100).toFixed(0)}%、持续 ${scenario.durationHours} 小时（每步 ${stepHours(scenario).toFixed(1)} 小时）、目标客群 ${segmentCriteria(scenario.targetSegment)}`, status: 'completed' },
-    { seq: 2, actor: 'CustomerQueryTool', action: '筛选目标客户', result: `候选客户 ${pool.generatedCustomers} 名，客群口径命中 ${pool.matchedCustomers} 名，选取 ${customerCount} 名${pool.segmentRelaxed ? '（命中不足，已按回撤降序补足并标注）' : ''}`, status: pool.segmentRelaxed ? 'pending' : 'completed' },
-    { seq: 3, actor: 'ProfileTool', action: '构建行为画像', result: `5 类原型、6 个心理因素，平均持仓回撤 ${averageDrawdown.toFixed(1)}%，随机种子 ${seed}`, status: 'completed' },
-    { seq: 4, actor: 'RelationshipTool', action: '构建客户关系网络', result: `${relationships.length} 条关系边、3 类传播通道`, status: 'completed' },
-    { seq: 5, actor: 'StrategyTool', action: '生成候选沟通策略', result: `${definitions.length} 套锚点策略，参数为触达覆盖率／人工深度／内容个性化三项杠杆，其余参数由杠杆推导`, status: 'completed' },
-    { seq: 6, actor: 'SimulationTool', action: '执行群体模拟', result: `${steps} 个时间步、市场冲击 ${(scenario.marketShock * 100).toFixed(0)}%、每步 ${stepHours(scenario).toFixed(1)} 小时、随机种子 ${seed}`, status: 'completed' },
-    { seq: 7, actor: 'PolicyGateway', action: '合规硬边界审查', result: `${blockedDrafts} 套策略草稿被拦截并改写、${blockedFindings.length} 项阻断、${reviewFindings.length} 项待审批，规则版本 ${RULE_VERSION}`, status: blockedFindings.length ? 'blocked' : reviewFindings.length ? 'pending' : 'completed' },
-    { seq: 8, actor: 'Reflector', action: '评估结果并沉淀候选技能', result: `推荐「${strategies[0].name}」：避险收益 ${(recommendedUtility.avoidance * 100).toFixed(2)}、触达成本 ${recommendedUtility.cost.toFixed(3)}、唤醒 ${recommendedUtility.wake.toFixed(3)}，净效用 ${(recommendedUtility.total * 100).toFixed(2)}`, status: 'completed' },
+    { seq: 1, actor: '任务规划', action: '理解你的目标', result: `跌幅 ${(scenario.marketShock * 100).toFixed(0)}%、持续 ${scenario.durationHours} 小时（每段 ${stepHours(scenario).toFixed(1)} 小时）、目标客户 ${segmentCriteria(scenario.targetSegment)}`, status: 'completed' },
+    { seq: 2, actor: '客户筛选', action: '筛出目标客户', result: `共生成候选客户 ${pool.generatedCustomers} 名，符合条件 ${pool.matchedCustomers} 名，本次选取 ${customerCount} 名${pool.segmentRelaxed ? '（符合条件的不足，已按回撤从高到低补足并标注）' : ''}`, status: pool.segmentRelaxed ? 'pending' : 'completed' },
+    { seq: 3, actor: '客户画像', action: '整理客户情况', result: `5 类客户画像、6 项心理特征，平均持仓回撤 ${averageDrawdown.toFixed(1)}%，随机种子 ${seed}`, status: 'completed' },
+    { seq: 4, actor: '关系网络', action: '建立客户联系', result: `共 ${relationships.length} 条客户联系、3 种影响渠道`, status: 'completed' },
+    { seq: 5, actor: '方案起草', action: '起草沟通方案', result: `${definitions.length} 套候选方案，差异在「覆盖多少客户／投入多少人力／话术多贴合个人」三项上`, status: 'completed' },
+    { seq: 6, actor: '群体推演', action: '推演客户反应', result: `分 ${steps} 段推演，跌幅 ${(scenario.marketShock * 100).toFixed(0)}%、每段 ${stepHours(scenario).toFixed(1)} 小时、随机种子 ${seed}`, status: 'completed' },
+    { seq: 7, actor: '合规审查', action: '合规检查', result: `${blockedDrafts} 套方案的违规话术已在推演前拦下并改写、${blockedFindings.length} 项违规、${reviewFindings.length} 项待人工确认，规则版本 ${RULE_VERSION}`, status: blockedFindings.length ? 'blocked' : reviewFindings.length ? 'pending' : 'completed' },
+    { seq: 8, actor: '结果复盘', action: '汇总结论并留存技能', result: `建议「${strategies[0].name}」：综合推荐度 ${relativeUtility(recommendedUtility).total.toFixed(2)}（以「不主动沟通」为 0 分基准）= 风险改善 ${relativeUtility(recommendedUtility).avoidance.toFixed(2)} − 人力成本 ${Math.abs(relativeUtility(recommendedUtility).cost).toFixed(2)} − 打扰代价 ${Math.abs(relativeUtility(recommendedUtility).wake).toFixed(2)}；比次优方案「${strategies[1]?.name ?? '无'}」高 ${(relativeUtility(recommendedUtility).total - relativeUtility(strategies[1]?.utility ?? recommendedUtility).total).toFixed(2)} 分`, status: 'completed' },
   ];
 
   return {
@@ -1295,45 +1308,45 @@ export function runSimulation(scenario: ScenarioConfig = defaultScenario, option
     strategySearch,
     explanationFactors: [
       {
-        label: '市场损失冲击',
+        label: '行情跌幅',
         weight: clamp(Math.abs(scenario.marketShock) / 0.35),
         evidence: `市场跌幅 ${(Math.abs(scenario.marketShock) * 100).toFixed(0)}% 按持仓弹性逐客户换算为回撤，平均 ${averageDrawdown.toFixed(1)}%。`,
         direction: '风险上升',
       },
       {
-        label: '损失厌恶',
+        label: '客户怕亏程度',
         weight: baseCustomers.reduce((sum, customer) => sum + customer.psychology.lossAversion, 0) / customerCount,
-        evidence: '来自五类客户原型的心理参数均值，并按客户逐一计算。',
+        evidence: '来自五类客户画像的心理特征均值，按客户逐一计算。',
         direction: '风险上升',
       },
       {
-        label: '关系网络传播',
+        label: '客户之间互相影响',
         weight: baseCustomers.reduce((sum, customer) => sum + customer.psychology.herding, 0) / customerCount,
         evidence: `${relationships.length} 条相似性、社交影响和统一服务关系边参与邻居状态更新。`,
         direction: '风险上升',
       },
       {
-        label: '持续时间压力',
+        label: '行情持续时间',
         weight: clamp(Math.log(Math.max(scenario.durationHours, 1) / 24) / Math.log(7), 0, 1),
-        evidence: `事件持续 ${scenario.durationHours} 小时、每步 ${stepHours(scenario).toFixed(1)} 小时；持续时间越长压力衰减越慢，峰值高度上升，但在现有参数下压力峰值仍出现在首个时间步。`,
+        evidence: `行情持续 ${scenario.durationHours} 小时、每段 ${stepHours(scenario).toFixed(1)} 小时；持续越久压力衰减越慢、峰值越高。需要说明的是：现有参数下峰值仍出现在第一段。`,
         direction: '风险上升',
       },
       {
-        label: '推荐策略缓释',
+        label: '推荐方案的作用',
         weight: clamp(recommendedStrategy.personalize),
-        evidence: `推荐策略触达覆盖率 ${(recommendedStrategy.reach * 100).toFixed(0)}%、人工深度 ${(recommendedStrategy.depth * 100).toFixed(0)}%、内容个性化 ${(recommendedStrategy.personalize * 100).toFixed(0)}%；覆盖率经逐客户门控生效，个性化决定通用话术对风险两端客户的失配程度。`,
+        evidence: `推荐方案覆盖 ${(recommendedStrategy.reach * 100).toFixed(0)}% 的客户、人工投入 ${(recommendedStrategy.depth * 100).toFixed(0)}%、话术个性化 ${(recommendedStrategy.personalize * 100).toFixed(0)}%；覆盖哪些客户是逐一判定的，个性化程度决定通用话术对高风险和低风险客户是否贴合。`,
         direction: '风险缓释',
       },
       {
-        label: '触达成本与唤醒',
+        label: '人力成本与打扰代价',
         weight: clamp(recommendedUtility.cost * 4 + recommendedUtility.wake * 12),
-        evidence: `推荐策略的触达成本 ${recommendedUtility.cost.toFixed(3)}、唤醒效应 ${recommendedUtility.wake.toFixed(3)}；主动联系越广越快，越容易惊动原本平静的客户。`,
+        evidence: `推荐方案的人力成本 ${recommendedUtility.cost.toFixed(3)}、打扰代价 ${recommendedUtility.wake.toFixed(3)}；联系得越广越快，越容易惊动本来不怎么关注账户的客户。`,
         direction: '风险上升',
       },
       {
-        label: '合规硬边界',
+        label: '合规检查',
         weight: clamp((blockedDrafts * 2 + blockedFindings.length * 2 + reviewFindings.length) / 8),
-        evidence: `${blockedDrafts} 套策略草稿的违规表达被拦截并改写，其话术风险通道在模拟中归零；共 ${blockedFindings.length} 项阻断、${reviewFindings.length} 项待审批，规则版本 ${RULE_VERSION}。`,
+        evidence: `${blockedDrafts} 套方案里的违规表达已在推演前拦下并改写，不再计入推演结果；共 ${blockedFindings.length} 项违规、${reviewFindings.length} 项待人工确认，规则版本 ${RULE_VERSION}。`,
         direction: '风险缓释',
       },
     ],

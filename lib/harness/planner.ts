@@ -11,14 +11,14 @@ export type Planned<T> = {
 };
 
 const canonicalSteps: Array<{ tool: ToolName; title: string; intent: string }> = [
-  { tool: 'scenario.extract', title: '解析业务目标与场景参数', intent: '把自然语言目标收敛为可追踪的结构化场景配置' },
-  { tool: 'customers.query', title: '筛选目标客户', intent: '按客群口径筛选候选客户并记录排除原因' },
-  { tool: 'profile.build', title: '构建行为画像与记忆', intent: '聚合心理参数与历史服务记忆，形成结构化证据' },
-  { tool: 'graph.build', title: '构建客户关系网络', intent: '生成相似性、社交影响与统一服务三类关系边' },
-  { tool: 'strategy.draft', title: '生成候选沟通策略', intent: '产出宏观策略草稿与一人一策话术' },
-  { tool: 'simulation.run', title: '执行群体行为模拟', intent: '按确定性数值模型推演逐时间步的群体状态' },
-  { tool: 'compliance.review', title: '合规硬边界审查', intent: '规则引擎扫描草稿并阻断高风险表达' },
-  { tool: 'report.compose', title: '输出报告与反思', intent: '生成可审计结论并沉淀候选技能' },
+  { tool: 'scenario.extract', title: '理解你的目标', intent: '把你的目标转成可复现的参数：跌幅、持续时间、客户规模等' },
+  { tool: 'customers.query', title: '筛出目标客户', intent: '按你指定的条件筛出目标客户，并记下谁被排除、为什么' },
+  { tool: 'profile.build', title: '整理客户情况', intent: '汇总每位客户的心理特征与服务记录，形成可核对的依据' },
+  { tool: 'graph.build', title: '建立客户关系网络', intent: '建立客户之间的联系：兴趣相近的、互相影响的、被同一服务覆盖的' },
+  { tool: 'strategy.draft', title: '起草沟通方案', intent: '写出整体沟通方案，以及每位客户该怎么说' },
+  { tool: 'simulation.run', title: '推演客户反应', intent: '按时间一段一段推演客户群体的情绪与行为变化' },
+  { tool: 'compliance.review', title: '合规检查', intent: '逐句检查话术，拦下承诺收益、催促操作这类违规表达' },
+  { tool: 'report.compose', title: '生成报告', intent: '汇总结论，并把这次的做法存成可复用的技能' },
 ];
 
 export function defaultPlan(): TaskPlan {

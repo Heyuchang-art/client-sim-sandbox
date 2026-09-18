@@ -196,7 +196,7 @@ describe('合规与审计输出', () => {
     result.audit.forEach((entry) => expect(entry.at).toBeUndefined());
     expect(result.audit[0].result).toContain('-27%');
     expect(result.audit[0].result).toContain('48 小时');
-    expect(result.audit[5].result).toContain('每步 6.0 小时');
+    expect(result.audit[5].result).toContain('每段 6.0 小时');
   });
 });
 
