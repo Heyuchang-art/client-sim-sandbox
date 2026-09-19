@@ -1,6 +1,6 @@
 {
   "main": {
-    "generatedAt": "2026-09-19T10:59:51.971Z",
+    "generatedAt": "2026-09-19T11:07:21.763Z",
     "version": "0.2.0",
     "label": "样本内语料（50 条）",
     "corpusPath": "C:\\Users\\admin\\Desktop\\华泰证券杯\\securities-customer-sandbox\\evals\\ask-corpus.jsonl",
@@ -125,7 +125,7 @@
         "actualValue": [
           347
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q07",
@@ -141,7 +141,7 @@
         "actualValue": [
           20
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q08",
@@ -173,7 +173,7 @@
         "actualValue": [
           11780575938
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q10",
@@ -205,7 +205,7 @@
         "actualValue": [
           11780575.938
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q12",
@@ -221,7 +221,7 @@
         "actualValue": [
           8066582414
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q13",
@@ -253,7 +253,7 @@
         "actualValue": [
           50
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q15",
@@ -349,7 +349,7 @@
         "actualValue": [
           114
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q21",
@@ -365,7 +365,7 @@
         "actualValue": [
           721
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q22",
@@ -397,7 +397,7 @@
         "actualValue": [
           1207575360
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q24",
@@ -413,7 +413,7 @@
         "actualValue": [
           1383683594
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q25",
@@ -436,7 +436,7 @@
         "level": "中等",
         "question": "有持仓记录的客户有多少人",
         "mode": "rule",
-        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id LIMIT 10",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c WHERE c.cust_id IN (SELECT cust_id FROM cust_holding) LIMIT 10",
         "ok": true,
         "reason": "一致",
         "goldenValue": [
@@ -452,7 +452,7 @@
         "level": "中等",
         "question": "有交易记录的客户有多少人",
         "mode": "rule",
-        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_trade t ON c.cust_id = t.cust_id LIMIT 10",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c WHERE c.cust_id IN (SELECT cust_id FROM cust_trade) LIMIT 10",
         "ok": true,
         "reason": "一致",
         "goldenValue": [
@@ -468,7 +468,7 @@
         "level": "中等",
         "question": "有资金流出记录的客户有多少人",
         "mode": "rule",
-        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_cashflow f ON c.cust_id = f.cust_id WHERE f.flow_type = '流出' LIMIT 10",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_cashflow f ON c.cust_id = f.cust_id WHERE f.flow_type = '流出' AND c.cust_id IN (SELECT cust_id FROM cust_cashflow) LIMIT 10",
         "ok": true,
         "reason": "一致",
         "goldenValue": [
@@ -529,7 +529,7 @@
         "reason": "分组全部一致（共 5 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q33",
@@ -553,7 +553,7 @@
         "reason": "分组全部一致（共 10 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q35",
@@ -577,7 +577,7 @@
         "reason": "分组全部一致（共 3 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q37",
@@ -621,7 +621,7 @@
         "actualValue": [
           247
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q40",
@@ -649,7 +649,7 @@
         "actualValue": [
           1575500546
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q42",
@@ -701,7 +701,7 @@
         "reason": "分组全部一致（共 5 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q46",
@@ -774,7 +774,7 @@
   },
   "optional": [
     {
-      "generatedAt": "2026-09-19T10:59:52.082Z",
+      "generatedAt": "2026-09-19T11:07:21.875Z",
       "version": "0.2.0",
       "label": "留出集（15 条，交叉验证）",
       "corpusPath": "C:\\Users\\admin\\Desktop\\华泰证券杯\\securities-customer-sandbox\\evals\\ask-heldout.jsonl",
@@ -819,7 +819,7 @@
           "actualValue": [
             125
           ],
-          "latencyMs": 1
+          "latencyMs": 0
         },
         {
           "id": "h02",
@@ -863,7 +863,7 @@
           "actualValue": [
             46.859375
           ],
-          "latencyMs": 0
+          "latencyMs": 1
         },
         {
           "id": "h05",
@@ -911,7 +911,7 @@
           "actualValue": [
             410227468
           ],
-          "latencyMs": 1
+          "latencyMs": 2
         },
         {
           "id": "h08",
@@ -927,7 +927,7 @@
           "actualValue": [
             131
           ],
-          "latencyMs": 0
+          "latencyMs": 1
         },
         {
           "id": "h09",
@@ -983,7 +983,7 @@
           "actualValue": [
             967
           ],
-          "latencyMs": 2
+          "latencyMs": 1
         },
         {
           "id": "h13",
@@ -1035,55 +1035,26 @@
       ]
     },
     {
-      "generatedAt": "2026-09-19T10:59:52.175Z",
+      "generatedAt": "2026-09-19T11:07:21.976Z",
       "version": "0.2.0",
       "label": "能力边界集（12 条，预期会出现拒答）",
       "corpusPath": "C:\\Users\\admin\\Desktop\\华泰证券杯\\securities-customer-sandbox\\evals\\ask-boundary.jsonl",
       "total": 12,
-      "accuracy": 0.8333,
+      "accuracy": 1,
       "threshold": 0.9,
-      "passed": false,
+      "passed": true,
       "modelConfigured": false,
       "byLevel": {
         "边界": {
           "total": 12,
-          "ok": 10,
-          "accuracy": 0.8333
+          "ok": 12,
+          "accuracy": 1
         }
       },
       "modeCounts": {
         "rule": 12
       },
-      "failures": [
-        {
-          "id": "b09",
-          "level": "边界",
-          "question": "客户满意度是多少",
-          "mode": "rule",
-          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c LIMIT 10",
-          "ok": false,
-          "reason": "超出元数据覆盖面却仍然给出了答案",
-          "goldenValue": null,
-          "actualValue": [
-            1000
-          ],
-          "latencyMs": 0
-        },
-        {
-          "id": "b12",
-          "level": "边界",
-          "question": "近一周的投诉客户有多少",
-          "mode": "rule",
-          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c LIMIT 10",
-          "ok": false,
-          "reason": "超出元数据覆盖面却仍然给出了答案",
-          "goldenValue": null,
-          "actualValue": [
-            1000
-          ],
-          "latencyMs": 1
-        }
-      ],
+      "failures": [],
       "results": [
         {
           "id": "b01",
@@ -1095,7 +1066,7 @@
           "reason": "已明确拒答并提示换问法",
           "goldenValue": null,
           "actualValue": null,
-          "latencyMs": 1
+          "latencyMs": 0
         },
         {
           "id": "b02",
@@ -1186,13 +1157,11 @@
           "level": "边界",
           "question": "客户满意度是多少",
           "mode": "rule",
-          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c LIMIT 10",
-          "ok": false,
-          "reason": "超出元数据覆盖面却仍然给出了答案",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
           "goldenValue": null,
-          "actualValue": [
-            1000
-          ],
+          "actualValue": null,
           "latencyMs": 0
         },
         {
@@ -1224,14 +1193,12 @@
           "level": "边界",
           "question": "近一周的投诉客户有多少",
           "mode": "rule",
-          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c LIMIT 10",
-          "ok": false,
-          "reason": "超出元数据覆盖面却仍然给出了答案",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
           "goldenValue": null,
-          "actualValue": [
-            1000
-          ],
-          "latencyMs": 1
+          "actualValue": null,
+          "latencyMs": 0
         }
       ],
       "notes": [

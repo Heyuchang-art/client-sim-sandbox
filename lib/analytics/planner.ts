@@ -102,6 +102,16 @@ export const analyticsMetricSpecs: MetricSpec[] = [
 const customerScopedTables = new Set(['cust_holding', 'cust_asset', 'cust_trade', 'cust_cashflow', 'service_relation']);
 
 const branchNames = ['南京中山路营业部', '南京鼓楼营业部', '苏州工业园区营业部', '无锡太湖营业部', '杭州钱江营业部'];
+/**
+ * 域外词表：九张业务表里没有这些主题的数据。
+ * 命中即明确拒答，而不是兜底成一个客户总数——「有多少客户投诉了」被答成
+ * 「客户数 1000」属于答非所问，比拒答更糟。
+ */
+const outOfDomainTerms = [
+  '投诉', '满意度', '抱怨', '情绪', '意向', '流失', '名单', '电话', '联系方式', '微信',
+  'kpi', '销售额', '营业收入', '营收', '行情', '大盘', '涨跌', '公告', '新闻', '舆情', '研报', '预测',
+];
+
 /** 客群标签字段口径：只按资产划分。活跃/沉默由交易与资金流水派生。 */
 const custTags = ['高净值客户', '普通客户'];
 const activeCustomerCondition = `c.cust_id IN (SELECT cust_id FROM cust_trade WHERE trade_date >= date('2026-09-18', '-90 day'))`;
@@ -123,10 +133,19 @@ const DIMENSIONS: DimensionSpec[] = [
   { key: 'channel', label: '渠道', patterns: [/渠道/], expr: 'c.channel', tables: ['cust_info'] },
 ];
 
-function extractFilters(text: string) {
+function extractFilters(text: string, days: number | null) {
   const where: string[] = [];
   const tables = new Set<string>();
   const open = /及以上|以上|更高|至少|不低于/.test(text);
+  /** 明细类条件一律用子查询表达：并进 FROM 会把主表收窄，与「有没有」的语义不符。 */
+  const detailSubquery = (table: 'cust_trade' | 'cust_cashflow', extra: string[] = []) => {
+    const conditions = [...extra];
+    if (days !== null) {
+      const column = table === 'cust_trade' ? 'trade_date' : 'flow_date';
+      conditions.push(`${column} >= date('${analyticsSnapshotDate}', '-${days} day')`);
+    }
+    return `SELECT cust_id FROM ${table}${conditions.length ? ` WHERE ${conditions.join(' AND ')}` : ''}`;
+  };
 
   const customerLevel = /\bC([1-5])\b/.exec(text);
   if (customerLevel) {
@@ -186,9 +205,29 @@ function extractFilters(text: string) {
     tables.add('cust_cashflow');
     where.push("f.flow_type = '流出'");
   }
-  if (/有交易记录|有交易的客户|发生过交易/.test(text)) tables.add('cust_trade');
-  if (/有持仓记录|有持仓的客户|持有产品/.test(text)) tables.add('cust_holding');
-  if (/有资金流水|有资金记录的客户/.test(text)) tables.add('cust_cashflow');
+  if (/有交易记录|有交易的客户|发生过交易|有交易/.test(text)) {
+    where.push(`c.cust_id IN (${detailSubquery('cust_trade')})`);
+  }
+  if (/有持仓记录|有持仓的客户|持有产品/.test(text)) {
+    where.push(`c.cust_id IN (${detailSubquery('cust_holding' as 'cust_trade')})`);
+  }
+  if (/有资金流入|有流入|流入记录/.test(text)) {
+    where.push(`c.cust_id IN (${detailSubquery('cust_cashflow', ["flow_type = '流入'"])})`);
+  } else if (/有资金流水|有资金记录的客户|有流出|资金流出记录/.test(text)) {
+    where.push(`c.cust_id IN (${detailSubquery('cust_cashflow')})`);
+  }
+
+  // 「持有 N 只以上产品」是分组条件，只能用 HAVING 表达
+  const holdingThreshold = /持有\s*([0-9]+)\s*只(?:以上|及以上|或更多)/.exec(text);
+  if (holdingThreshold) {
+    where.push(`c.cust_id IN (SELECT cust_id FROM cust_holding GROUP BY cust_id HAVING COUNT(*) >= ${Number(holdingThreshold[1])})`);
+  }
+
+  // 「开户超过 N 年」
+  const openYears = /开户[^0-9]{0,6}([0-9]+)\s*年/.exec(text);
+  if (openYears) {
+    where.push(`c.open_date <= date('${analyticsSnapshotDate}', '-${Number(openYears[1])} year')`);
+  }
 
   // 任何用到 c. 别名的条件都要求客户主表在场
   if (where.some((condition) => condition.trimStart().startsWith('c.'))) tables.add('cust_info');
@@ -249,6 +288,8 @@ function buildFrom(tables: Set<string>) {
 export function planAnalyticsQuery(question: string): PlannedQuery | null {
   const text = question.trim();
   if (!text) return null;
+  const lowered = text.toLowerCase();
+  if (outOfDomainTerms.some((term) => lowered.includes(term))) return null;
 
   let picked = analyticsMetricSpecs.filter((metric) => metric.patterns.some((pattern) => pattern.test(text)));
   if (picked.some((metric) => metric.entity)) picked = picked.filter((metric) => metric.key !== 'customer_count');
@@ -272,8 +313,15 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
     if (picked.length === 0) picked = [analyticsMetricSpecs.find((metric) => metric.key === 'customer_count')!];
   }
 
-  const wantsAverage = /平均|均值|人均/.test(text);
+  const wantsAverage = /平均|均值/.test(text);
+  const perCapita = /人均|户均|客均|平均每(位|名|个)客户/.test(text);
   const expressions = picked.map((metric) => {
+    if (perCapita && metric.key !== 'per_capita_asset' && !metric.fixed) {
+      // 「户均持仓市值」= 合计 ÷ 客户数，必须真的做除法，否则会差出几个数量级
+      const source = metric.sum ?? metric.avg ?? '';
+      const aggregate = /^([\s\S]*?)\s+AS\s+/.exec(source)?.[1] ?? source;
+      if (aggregate) return `${aggregate} / COUNT(DISTINCT c.cust_id) AS 户均${metric.label}`;
+    }
     if (metric.fixed) return metric.fixed;
     return wantsAverage ? metric.avg ?? metric.sum ?? metric.fixed ?? '' : metric.sum ?? metric.avg ?? metric.fixed ?? '';
   }).filter(Boolean);
@@ -282,7 +330,8 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
   const grouped = /各|按|分组|分布|分别|每个/.test(text);
   const dimension = grouped ? DIMENSIONS.find((item) => item.patterns.some((pattern) => pattern.test(text))) ?? null : null;
 
-  const filters = extractFilters(text);
+  const days = extractWindowDays(text);
+  const filters = extractFilters(text, days);
   const tables = new Set<string>(filters.tables);
   for (const metric of picked) metric.tables.forEach((table) => tables.add(table));
   if (dimension) dimension.tables.forEach((table) => tables.add(table));
@@ -292,7 +341,6 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
 
   // 时间窗口只作用在真正涉及流水的那张表上
   const where = [...filters.where];
-  const days = extractWindowDays(text);
   if (days !== null) {
     // 两张流水表同时出现时都要带上时间窗，不能只作用在其中一张上
     if (tables.has('cust_trade')) where.push(windowCondition('cust_trade', days));

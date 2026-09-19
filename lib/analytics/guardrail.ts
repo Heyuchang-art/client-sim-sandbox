@@ -94,9 +94,16 @@ function extractTableRefs(sql: string): TableRef[] {
     });
 }
 
+/** 抽取派生表别名：FROM ( ... ) t / JOIN ( ... ) x，这类别名指向子查询而不是物理表。 */
+function extractDerivedAliases(sql: string): string[] {
+  return [...stripLiterals(sql).matchAll(/\)\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*)/gi)]
+    .map((match) => match[1].toLowerCase())
+    .filter((alias) => !allowedFunctions.has(alias.toUpperCase()));
+}
+
 /** 抽取 WITH ... AS ( ... ) 定义的 CTE 名字。 */
 function extractCteNames(sql: string): string[] {
-  return [...stripLiterals(sql).matchAll(/\b(?:WITH|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(/gi)].map((match) => match[1].toLowerCase());
+  return [...stripLiterals(sql).matchAll(/(?:WITH\b|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(/gi)].map((match) => match[1].toLowerCase());
 }
 
 /**
@@ -140,24 +147,33 @@ export function inspectSql(rawSql: string): GuardrailCheck {
   let normalizedSql = sql;
   const totalLimitMatch = /\bLIMIT\s+(\d+)\b/i.exec(topLevel(stripped));
   const anyLimitMatch = /\bLIMIT\s+(\d+)\b/i.exec(stripped);
-  if (!anyLimitMatch) {
-    normalizedSql = `${sql} LIMIT ${guardrailMaxRows}`;
-    findings.push({
-      layer: '结构', rule: 'G-STRUCT-05', title: '缺少行数上限，已自动补全', disposition: '提醒',
-      detail: `查询未指定 LIMIT，已补为 ${guardrailMaxRows}，避免全表返回拖慢响应。`, excerpt: 'LIMIT',
-    });
-  } else if (Number(anyLimitMatch[1]) > guardrailMaxRows) {
-    normalizedSql = sql.replace(/LIMIT\s+\d+/i, `LIMIT ${guardrailMaxRows}`);
-    findings.push({
-      layer: '结构', rule: 'G-STRUCT-05', title: '行数上限过大，已收敛', disposition: '提醒',
-      detail: `LIMIT ${anyLimitMatch[1]} 超过上限 ${guardrailMaxRows}，已收敛到上限值。`, excerpt: anyLimitMatch[0],
-    });
-  } else if (!totalLimitMatch) {
+  /** 把最外层的那条 LIMIT 换成上限值：子查询里的 LIMIT 不能代表外层，所以取最后一次出现。 */
+  const clampTopLevelLimit = () => {
+    const matches = [...stripped.matchAll(/\bLIMIT\s+(\d+)\b/gi)];
+    const last = matches[matches.length - 1];
+    if (!last || last.index === undefined) return sql;
+    return sql.slice(0, last.index) + `LIMIT ${guardrailMaxRows}` + sql.slice(last.index + last[0].length);
+  };
+  if (totalLimitMatch) {
+    if (Number(totalLimitMatch[1]) > guardrailMaxRows) {
+      normalizedSql = clampTopLevelLimit();
+      findings.push({
+        layer: '结构', rule: 'G-STRUCT-05', title: '行数上限过大，已收敛', disposition: '提醒',
+        detail: `外层 LIMIT ${totalLimitMatch[1]} 超过上限 ${guardrailMaxRows}，已收敛到上限值。`, excerpt: totalLimitMatch[0],
+      });
+    }
+  } else if (anyLimitMatch) {
     // 子查询里的 LIMIT 不能给外层结果兜底，必须在外层补一条
     normalizedSql = `${sql} LIMIT ${guardrailMaxRows}`;
     findings.push({
       layer: '结构', rule: 'G-STRUCT-06', title: '只有子查询带行数上限，已在外层补全', disposition: '提醒',
       detail: `LIMIT 出现在子查询里，外层结果没有行数上限，已在外层补为 ${guardrailMaxRows}。`, excerpt: anyLimitMatch[0],
+    });
+  } else {
+    normalizedSql = `${sql} LIMIT ${guardrailMaxRows}`;
+    findings.push({
+      layer: '结构', rule: 'G-STRUCT-05', title: '缺少行数上限，已自动补全', disposition: '提醒',
+      detail: `查询未指定 LIMIT，已补为 ${guardrailMaxRows}，避免全表返回拖慢响应。`, excerpt: 'LIMIT',
     });
   }
 
@@ -187,12 +203,15 @@ export function inspectSql(rawSql: string): GuardrailCheck {
     if (analyticsTableNames.includes(ref.table)) aliasToTable.set(ref.table, ref.table);
     if (ref.alias) aliasToTable.set(ref.alias, ref.table);
   }
+  // CTE 名与派生表别名指向的是子查询而不是物理表，列无法按表校验，但作为限定符必须放行
+  const opaqueAliases = new Set<string>([...cteNames, ...extractDerivedAliases(sql)]);
 
   // 语义层：带表前缀的列引用必须属于该表（跨表幻觉字段的关键拦截点）
   const qualifiedBad: string[] = [];
   for (const match of stripped.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b/g)) {
     const alias = match[1].toLowerCase();
     const column = match[2].toLowerCase();
+    if (opaqueAliases.has(alias)) continue;
     const owner = aliasToTable.get(alias);
     if (!owner) {
       qualifiedBad.push(match[0]);
@@ -213,14 +232,20 @@ export function inspectSql(rawSql: string): GuardrailCheck {
   // 语义层：无表前缀的列名必须属于本次查询里出现的某张表。
   // 只做「全集白名单」是不够的——market_value 写在 cust_info 上同样是幻觉字段，
   // 只有把校验范围收敛到本次查询用到的表，列级验证才真正成立。
+  const outputAliases = new Set(
+    [...stripped.matchAll(/\bAS\s+([A-Za-z_][A-Za-z0-9_]*)/gi)].map((match) => match[1].toLowerCase()),
+  );
   if (cteNames.length === 0) {
     const allColumns = new Set(Object.values(analyticsColumnWhitelist).flatMap((set) => [...set]));
     const queryColumns = new Set<string>();
     for (const name of new Set(tables)) {
       analyticsColumnWhitelist[name]?.forEach((column) => queryColumns.add(column));
     }
+    // 输出别名（AS hold_value 之类）与真正引用的字段是两回事，不能当成幻觉字段
     const foreignColumns = [...new Set(tokenize(sql))].filter((token) =>
-      allColumns.has(token.toLowerCase()) && !queryColumns.has(token.toLowerCase()));
+      allColumns.has(token.toLowerCase())
+      && !queryColumns.has(token.toLowerCase())
+      && !outputAliases.has(token.toLowerCase()));
     if (foreignColumns.length > 0) {
       findings.push({
         layer: '语义', rule: 'G-SEM-06', title: '字段不属于本次查询的表', disposition: '拦截',
@@ -228,12 +253,20 @@ export function inspectSql(rawSql: string): GuardrailCheck {
         excerpt: foreignColumns.join('、'),
       });
     }
+  } else {
+    // CTE 的输出列名无法预先知道，这一条校验只能跳过——但要显式留痕，不能静默放行
+    findings.push({
+      layer: '语义', rule: 'G-SEM-07', title: '使用了 CTE，字段归属校验已跳过', disposition: '提醒',
+      detail: `查询使用了 CTE（${cteNames.join('、')}），其输出列名无法与元数据比对，本次跳过「字段是否属于该表」的校验；带表前缀的引用仍然照常校验。`,
+      excerpt: cteNames.join('、'),
+    });
   }
 
   // 语义层：标识符白名单（表名 ∪ 列名 ∪ 表别名 ∪ 列别名 ∪ CTE 名 ∪ 函数关键字）
   const knownIdentifiers = new Set<string>([
     ...analyticsTableNames,
     ...cteNames,
+    ...opaqueAliases,
     ...Object.values(analyticsColumnWhitelist).flatMap((set) => [...set]),
     ...aliasToTable.keys(),
     ...[...stripped.matchAll(/\bAS\s+([A-Za-z_][A-Za-z0-9_]*)/gi)].map((match) => match[1].toLowerCase()),

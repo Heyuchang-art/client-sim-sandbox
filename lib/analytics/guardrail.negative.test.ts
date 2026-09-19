@@ -108,3 +108,38 @@ describe('结果层：合理性检查', () => {
     expect(inspectResult(['客户数'], [], { customerCount: 1000 }).map((finding) => finding.rule)).toContain('G-RES-03');
   });
 });
+describe('语义层：CTE 与派生表（原误拦场景）', () => {
+  it('CTE 名作为限定符应当放行', () => {
+    const sql = 'WITH holdings AS (SELECT cust_id, market_value FROM cust_holding) SELECT holdings.market_value FROM holdings LIMIT 5';
+    expect(inspectSql(sql).passed).toBe(true);
+  });
+
+  it('多个 CTE 连写应当放行', () => {
+    const sql = 'WITH a AS (SELECT cust_id FROM cust_info), b AS (SELECT cust_id FROM cust_trade) SELECT COUNT(*) AS n FROM a JOIN b ON a.cust_id = b.cust_id LIMIT 5';
+    expect(inspectSql(sql).passed).toBe(true);
+  });
+
+  it('使用 CTE 时应显式留下「字段归属校验已跳过」的提醒', () => {
+    const sql = 'WITH holdings AS (SELECT cust_id FROM cust_holding) SELECT COUNT(*) AS n FROM holdings LIMIT 5';
+    const findings = inspectSql(sql).findings;
+    expect(findings.map((finding) => finding.rule)).toContain('G-SEM-07');
+  });
+
+  it('派生表别名应当放行', () => {
+    const sql = 'SELECT t.客户数 FROM (SELECT cust_tag AS 客户标签, COUNT(*) AS 客户数 FROM cust_info GROUP BY cust_tag) t LIMIT 5';
+    expect(inspectSql(sql).passed).toBe(true);
+  });
+
+  it('输出别名与列名同名时不应判为幻觉字段', () => {
+    const sql = 'SELECT c.cust_tag AS hold_value, COUNT(*) AS amount FROM cust_info c GROUP BY c.cust_tag LIMIT 5';
+    expect(inspectSql(sql).passed).toBe(true);
+  });
+
+  it('外层行数上限超过阈值时应当收敛，且不误删子查询的 LIMIT', () => {
+    const sql = 'SELECT cust_id FROM cust_info WHERE cust_id IN (SELECT cust_id FROM cust_trade LIMIT 5) LIMIT 5000';
+    const check = inspectSql(sql);
+    expect(check.findings.map((finding) => finding.rule)).toContain('G-STRUCT-05');
+    expect(check.normalizedSql).toContain('(SELECT cust_id FROM cust_trade LIMIT 5)');
+    expect(check.normalizedSql.trimEnd().endsWith('LIMIT 1000')).toBe(true);
+  });
+});

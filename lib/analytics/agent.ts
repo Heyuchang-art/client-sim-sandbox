@@ -78,14 +78,14 @@ function formatRows(columns: string[], rows: Array<Record<string, unknown>>) {
   return `共 ${rows.length} 行，字段为 ${columns.join('、')}。`;
 }
 
-let cachedCustomerCount: number | null = null;
-
-/** 全库客户数：结果层判断「客户数是否超过全量」的锚点。首次查询后缓存。 */
+/**
+ * 全库客户数：结果层判断「客户数是否超过全量」的锚点。
+ * 不做模块级缓存——同一个进程里可能先后连到不同规模的库（测试与多环境），
+ * 缓存会把上一套数据的锚点用到下一套上，报出假的「客户数超过全量」。
+ */
 async function totalCustomerCount(db: D1Like) {
-  if (cachedCustomerCount !== null) return cachedCustomerCount;
   const row = (await db.prepare('SELECT COUNT(*) AS n FROM cust_info').first()) as { n?: number } | null;
-  cachedCustomerCount = typeof row?.n === 'number' ? row.n : 0;
-  return cachedCustomerCount;
+  return typeof row?.n === 'number' ? row.n : 0;
 }
 
 function fmtValue(value: unknown) {

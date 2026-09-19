@@ -259,7 +259,7 @@ export function formatAskEval(report: AskEvalReport) {
     '## ' + report.label + '（' + report.generatedAt.slice(0, 10) + ' v' + report.version + '）',
     '',
     report.label.includes('边界')
-      ? '- 样本 ' + report.total + ' 条 · 正确拒答 ' + (report.accuracy * 100).toFixed(1) + '%（' + report.results.filter((item) => item.ok).length + '/' + report.total + '）· 其余为「超出元数据覆盖面却仍给出了答案」，属于已知能力缺口'
+      ? '- 样本 ' + report.total + ' 条 · 正确拒答 ' + (report.accuracy * 100).toFixed(1) + '%（' + report.results.filter((item) => item.ok).length + '/' + report.total + '）' + (report.failures.length > 0 ? '· 其中 ' + report.failures.length + ' 条「超出元数据覆盖面却仍给出了答案」，属于已知能力缺口' : '')
       : '- 样本 ' + report.total + ' 条 · 执行准确率 ' + (report.accuracy * 100).toFixed(1) + '% · 阈值 ' + (report.threshold * 100).toFixed(0) + '% · ' + (report.passed ? '通过' : '未达标'),
     '- 执行模式：' + Object.entries(report.modeCounts).map(([key, value]) => key + '=' + value).join('，'),
     '- 分档：' + Object.entries(report.byLevel).map(([key, value]) => key + ' ' + (value.accuracy * 100).toFixed(1) + '%（' + value.ok + '/' + value.total + '）').join(' · '),
