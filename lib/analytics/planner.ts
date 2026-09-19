@@ -423,6 +423,14 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
   // 人均换算的分母是客户数，逐客户收敛后再聚合语义会变，明确拒答而不是给错的数
   if (needsRewrite && perCapita) return null;
 
+  // 两张 1:n 明细表并列时，按客户收敛仍会在两张表之间交叉放大（持仓 × 交易），
+  // 而把每个指标都改成带各自筛选条件的按客户子查询尚未实现。
+  // 这种情况下拒答，而不是给一个放大几倍的数字。
+  const oneToManyMeasures = [...measureAliases]
+    .map((alias) => measureAliasTable[alias])
+    .filter((table): table is string => table !== undefined && oneToManyTables.has(table));
+  if (new Set(oneToManyMeasures).size >= 2) return null;
+
   if (needsRewrite) {
     const split = (expression: string) => {
       const at = expression.lastIndexOf(' AS ');

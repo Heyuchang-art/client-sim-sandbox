@@ -139,10 +139,8 @@ describe('多指标不能因连接而放大（回归 F1）', () => {
     expect(sql).not.toContain('SUM((SELECT');
   });
 
-  it('多指标叠加流水时间窗仍按客户收敛，不因条件复杂而算错', () => {
-    const sql = sqlOf('持仓市值与近 90 日交易金额');
-    expect(sql).toContain("t.trade_date >= date('2026-09-18', '-90 day')");
-    expect(sql).toContain('GROUP BY c.cust_id');
+  it('持仓与流水并列时（两张 1:n 表）明确拒答，不给出交叉放大的数字', () => {
+    expect(planAnalyticsQuery('持仓市值与近 90 日交易金额')).toBeNull();
   });
 });
 
@@ -167,5 +165,18 @@ describe('未被理解的限定条件必须拒答（回归 F2）', () => {
   it('干净的数量提问仍然作答', () => {
     expect(sqlOf('客户总数是多少')).toContain('客户数');
     expect(sqlOf('我们一共有多少位客户')).toContain('客户数');
+  });
+});
+
+describe('两张明细表并列必须先拒答（回归 E）', () => {
+  it('持仓与交易并列的求和会被交叉放大，应当拒答', () => {
+    expect(planAnalyticsQuery('持仓市值与交易金额')).toBeNull();
+    expect(planAnalyticsQuery('持仓成本与交易金额')).toBeNull();
+    expect(planAnalyticsQuery('客户近 30 日的交易金额和净流入')).toBeNull();
+  });
+
+  it('单张明细表加 1:1 表的组合仍正常作答', () => {
+    expect(sqlOf('客户总资产与持仓市值')).toContain('GROUP BY c.cust_id');
+    expect(sqlOf('各客群标签的总资产与持仓市值')).toContain('GROUP BY t.d0');
   });
 });
