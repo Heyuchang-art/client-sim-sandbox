@@ -238,6 +238,26 @@ export function inspectSql(rawSql: string): GuardrailCheck {
     });
   }
 
+  // 结果层前置的一条结构提醒：1:1 表上的聚合与 1:n 明细表并列时，SUM 会被连接重复累加。
+  // 规则路径已经把这类查询改写掉了，这条主要用来让「模型直接写出这种 SQL」的情况在审计里可见。
+  const oneToMany = new Set(['cust_holding', 'cust_trade', 'cust_cashflow']);
+  const oneToOne = new Set(['cust_asset', 'prod_info', 'mgr_info']);
+  const joinedTables = new Set(tables);
+  if ([...joinedTables].some((table) => oneToMany.has(table))) {
+    const risky = [...stripped.matchAll(/(SUM|AVG)\s*\(\s*([a-z])\./gi)]
+      // 已经在按客户的相关子查询里聚合的，不受外层连接影响，不算风险
+      .filter((match) => !/\(\s*SELECT[^()]*$/i.test(stripped.slice(Math.max(0, (match.index ?? 0) - 80), match.index ?? 0)))
+      .map((match) => aliasToTable.get(match[2].toLowerCase()))
+      .filter((table): table is string => table !== undefined && oneToOne.has(table));
+    if (risky.length > 0) {
+      findings.push({
+        layer: '结果', rule: 'G-RES-08', title: '可能存在连接放大', disposition: '提醒',
+        detail: `查询在 1:n 明细表（${[...joinedTables].filter((table) => oneToMany.has(table)).join('、')}）上与 1:1 表（${[...new Set(risky)].join('、')}）的字段一起做聚合，SUM 可能被连接重复累加。请核对口径，或改为先按客户收敛再聚合。`,
+        excerpt: [...new Set(risky)].join('、'),
+      });
+    }
+  }
+
   // 语义层：无表前缀的列名必须属于本次查询里出现的某张表。
   // 只做「全集白名单」是不够的——market_value 写在 cust_info 上同样是幻觉字段，
   // 只有把校验范围收敛到本次查询用到的表，列级验证才真正成立。

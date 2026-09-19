@@ -143,3 +143,18 @@ describe('语义层：CTE 与派生表（原误拦场景）', () => {
     expect(check.normalizedSql.trimEnd().endsWith('LIMIT 1000')).toBe(true);
   });
 });
+
+describe('连接放大提醒（G-RES-08）', () => {
+  it('1:1 表的聚合与 1:n 表并列时给出提醒但不拦截', () => {
+    const sql = 'SELECT SUM(a.total_asset) AS 总资产合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN cust_asset a ON c.cust_id = a.cust_id LIMIT 10';
+    const check = inspectSql(sql);
+    expect(check.passed).toBe(true);
+    expect(check.findings.map((finding) => finding.rule)).toContain('G-RES-08');
+  });
+
+  it('先按客户收敛的写法不再触发提醒', () => {
+    const sql = 'SELECT SUM((SELECT SUM(a.total_asset) FROM cust_asset a WHERE a.cust_id = c.cust_id)) AS 总资产合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id LIMIT 10';
+    const findings = inspectSql(sql).findings.map((finding) => finding.rule);
+    expect(findings).not.toContain('G-RES-08');
+  });
+});
