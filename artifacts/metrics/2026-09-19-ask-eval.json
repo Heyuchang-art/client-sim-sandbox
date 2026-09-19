@@ -1,6 +1,6 @@
 {
   "main": {
-    "generatedAt": "2026-09-19T11:30:12.084Z",
+    "generatedAt": "2026-09-19T11:31:50.656Z",
     "version": "0.2.0",
     "label": "样本内语料（50 条）",
     "corpusPath": "C:\\Users\\admin\\Desktop\\华泰证券杯\\securities-customer-sandbox\\evals\\ask-corpus.jsonl",
@@ -45,7 +45,7 @@
         "actualValue": [
           1000
         ],
-        "latencyMs": 3
+        "latencyMs": 2
       },
       {
         "id": "q02",
@@ -93,7 +93,7 @@
         "actualValue": [
           198
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q05",
@@ -109,7 +109,7 @@
         "actualValue": [
           582
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q06",
@@ -157,7 +157,7 @@
         "actualValue": [
           5
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q09",
@@ -173,7 +173,7 @@
         "actualValue": [
           11780575938
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q10",
@@ -221,7 +221,7 @@
         "actualValue": [
           8066582414
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q13",
@@ -237,7 +237,7 @@
         "actualValue": [
           2503
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q14",
@@ -253,7 +253,7 @@
         "actualValue": [
           50
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q15",
@@ -269,7 +269,7 @@
         "actualValue": [
           5219
         ],
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q16",
@@ -285,7 +285,7 @@
         "actualValue": [
           2489
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q17",
@@ -429,7 +429,7 @@
         "actualValue": [
           277690897
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q26",
@@ -477,7 +477,7 @@
         "actualValue": [
           755
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q29",
@@ -493,7 +493,7 @@
         "actualValue": [
           1000
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q30",
@@ -517,7 +517,7 @@
         "reason": "分组全部一致（共 5 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 0
+        "latencyMs": 1
       },
       {
         "id": "q32",
@@ -529,7 +529,7 @@
         "reason": "分组全部一致（共 5 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q33",
@@ -577,7 +577,7 @@
         "reason": "分组全部一致（共 3 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q37",
@@ -633,7 +633,7 @@
         "reason": "分组全部一致（共 2 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 18
+        "latencyMs": 19
       },
       {
         "id": "q41",
@@ -649,7 +649,7 @@
         "actualValue": [
           1561881823
         ],
-        "latencyMs": 2
+        "latencyMs": 1
       },
       {
         "id": "q42",
@@ -665,7 +665,7 @@
         "actualValue": [
           356261727
         ],
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q43",
@@ -689,7 +689,7 @@
         "reason": "分组全部一致（共 5 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q45",
@@ -737,7 +737,7 @@
         "reason": "分组全部一致（共 2 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 1
+        "latencyMs": 0
       },
       {
         "id": "q49",
@@ -765,7 +765,7 @@
         "reason": "分组全部一致（共 5 组）",
         "goldenValue": null,
         "actualValue": null,
-        "latencyMs": 0
+        "latencyMs": 1
       }
     ],
     "notes": [
@@ -774,7 +774,7 @@
   },
   "optional": [
     {
-      "generatedAt": "2026-09-19T11:30:12.200Z",
+      "generatedAt": "2026-09-19T11:31:50.775Z",
       "version": "0.2.0",
       "label": "留出集（15 条，交叉验证）",
       "corpusPath": "C:\\Users\\admin\\Desktop\\华泰证券杯\\securities-customer-sandbox\\evals\\ask-heldout.jsonl",
@@ -879,7 +879,7 @@
           "actualValue": [
             858896.6122194513
           ],
-          "latencyMs": 0
+          "latencyMs": 12
         },
         {
           "id": "h06",
@@ -895,7 +895,7 @@
           "actualValue": [
             13862281
           ],
-          "latencyMs": 0
+          "latencyMs": 1
         },
         {
           "id": "h07",
@@ -939,7 +939,7 @@
           "reason": "分组全部一致（共 5 组）",
           "goldenValue": null,
           "actualValue": null,
-          "latencyMs": 1
+          "latencyMs": 0
         },
         {
           "id": "h10",
@@ -951,7 +951,7 @@
           "reason": "分组全部一致（共 2 组）",
           "goldenValue": null,
           "actualValue": null,
-          "latencyMs": 0
+          "latencyMs": 1
         },
         {
           "id": "h11",
@@ -995,7 +995,7 @@
           "reason": "分组全部一致（共 3 组）",
           "goldenValue": null,
           "actualValue": null,
-          "latencyMs": 1
+          "latencyMs": 0
         },
         {
           "id": "h14",
@@ -1011,7 +1011,7 @@
           "actualValue": [
             2547622.908256881
           ],
-          "latencyMs": 1
+          "latencyMs": 0
         },
         {
           "id": "h15",
@@ -1035,7 +1035,7 @@
       ]
     },
     {
-      "generatedAt": "2026-09-19T11:30:12.305Z",
+      "generatedAt": "2026-09-19T11:31:50.866Z",
       "version": "0.2.0",
       "label": "能力边界集（12 条，预期会出现拒答）",
       "corpusPath": "C:\\Users\\admin\\Desktop\\华泰证券杯\\securities-customer-sandbox\\evals\\ask-boundary.jsonl",
@@ -1066,7 +1066,7 @@
           "reason": "已明确拒答并提示换问法",
           "goldenValue": null,
           "actualValue": null,
-          "latencyMs": 0
+          "latencyMs": 1
         },
         {
           "id": "b02",
@@ -1090,7 +1090,7 @@
           "reason": "已明确拒答并提示换问法",
           "goldenValue": null,
           "actualValue": null,
-          "latencyMs": 1
+          "latencyMs": 0
         },
         {
           "id": "b04",
@@ -1186,7 +1186,7 @@
           "reason": "已明确拒答并提示换问法",
           "goldenValue": null,
           "actualValue": null,
-          "latencyMs": 0
+          "latencyMs": 1
         },
         {
           "id": "b12",
