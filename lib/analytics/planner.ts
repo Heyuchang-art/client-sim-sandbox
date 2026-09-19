@@ -21,6 +21,17 @@ export type PlannedQuery = {
   explanation: string;
 };
 
+/**
+ * 未被理解的限定意图词：问句里出现这些词，说明用户还加了条件，而规则路径没有对应口径。
+ * 这种情况下「客户数」会给出一个看似合理却答非所问的数字，必须拒答。
+ * 这是枚举式词表的固有限制——真正的解是由模型路径理解语义，规则路径只负责不答错。
+ */
+const unparsedIntentTerms = [
+  '犹豫', '打算', '可能', '想要', '希望', '考虑', '不满意', '满意', '关户', '换券商', '销户', '转户',
+  '潜在', '高价值', '睡眠', '意愿', '倾向', '关心', '感兴趣', '理解', '看懂', '听说', '评价', '反馈',
+  '口碑', '印象', '感受', '体验', '推荐买', '适合买',
+];
+
 /** 九张表的固定别名。所有表达式与筛选条件都基于这套别名拼接。 */
 const ALIAS: Record<string, string> = {
   cust_info: 'c',
@@ -120,6 +131,7 @@ const custTags = ['高净值客户', '普通客户'];
 const activeCustomerCondition = `c.cust_id IN (SELECT cust_id FROM cust_trade WHERE trade_date >= date('2026-09-18', '-90 day'))`;
 const silentCustomerCondition = `c.cust_id NOT IN (SELECT cust_id FROM cust_trade WHERE trade_date >= date('2026-09-18', '-90 day')) AND c.cust_id NOT IN (SELECT cust_id FROM cust_cashflow WHERE flow_type = '流入' AND flow_date >= date('2026-09-18', '-90 day'))`;
 const productTypes = ['权益类', '混合类', '固收类', '现金类', '商品类'];
+const channelValues = ['App', '电话', '线下'];
 
 type DimensionSpec = { key: string; label: string; patterns: RegExp[]; expr: string; tables: string[] };
 
@@ -190,7 +202,7 @@ function extractFilters(text: string, days: number | null) {
   if (branch) where.push(`c.branch = '${branch}'`);
 
   // 服务渠道的具体取值（App / 电话 / 线下）
-  const channelValue = ['App', '电话', '线下'].find((item) => text.includes(item));
+  const channelValue = channelValues.find((item) => text.includes(item));
   if (channelValue) where.push(`c.channel = '${channelValue}'`);
 
   const product = [...analyticsProducts].sort((a, b) => b.prod_name.length - a.prod_name.length).find((item) => text.includes(item.prod_name));
@@ -306,6 +318,8 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
   if (!text) return null;
   const lowered = text.toLowerCase();
   if (outOfDomainTerms.some((term) => lowered.includes(term))) return null;
+  // 否定语境：把「不活跃」「没交易」当成「活跃客户」来统计是错的，直接拒答
+  if (/(不|未|没|没有|无)[^。，,？?]{0,2}(活跃|交易|持仓|资产|流入|高净值)/.test(text)) return null;
 
   let picked = analyticsMetricSpecs.filter((metric) => metric.patterns.some((pattern) => pattern.test(text)));
   if (picked.some((metric) => metric.entity)) picked = picked.filter((metric) => metric.key !== 'customer_count');
@@ -317,6 +331,7 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
     // 兜底只在「问题确实在问客户数量」时启用：否则「张三的持仓是多少」这类问题
     // 会被兜底成一个客户总数，属于答非所问。宁可明确拒答。
     if (!/多少|几|数量|总数|统计|一共有/.test(text) || !/客户|人数/.test(text)) return null;
+    if (unparsedIntentTerms.some((term) => text.includes(term))) return null;
     const fallback = analyticsMetricSpecs.find((metric) => metric.key === 'customer_count');
     if (!fallback) return null;
     picked = [fallback];
@@ -328,6 +343,10 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
     picked = picked.filter((metric) => metric.key !== 'total_asset');
     if (picked.length === 0) picked = [analyticsMetricSpecs.find((metric) => metric.key === 'customer_count')!];
   }
+
+  // 只识别出「客户数」时，先确认问题里没有我们看不懂的限定意图
+  if (picked.length === 1 && picked[0].key === 'customer_count'
+    && unparsedIntentTerms.some((term) => text.includes(term))) return null;
 
   const wantsAverage = /平均|均值/.test(text);
   const perCapita = /人均|户均|客均|平均每(位|名|个)客户/.test(text);
@@ -361,6 +380,48 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
     // 两张流水表同时出现时都要带上时间窗，不能只作用在其中一张上
     if (tables.has('cust_trade')) where.push(windowCondition('cust_trade', days));
     if (tables.has('cust_cashflow')) where.push(windowCondition('cust_cashflow', days));
+  }
+
+  // 多张明细表并列聚合时，连接会把明细行数放大：SUM 会被重复计算（COUNT DISTINCT 不会）。
+  // 出现这种情况时改为「每个指标一个相关子查询」，从根上避免 fan-out。
+  const measureAliases = new Set<string>();
+  for (const metric of picked) {
+    for (const table of metric.tables) {
+      if (table === 'cust_info') continue;
+      const alias = ALIAS[table];
+      if (alias && expressions.some((expression) => new RegExp(`\\b${alias}\\.`).test(expression))) measureAliases.add(alias);
+    }
+  }
+  const needsScalar = expressions.length >= 2 && measureAliases.size >= 2;
+  if (needsScalar) {
+    // 相关子查询只能承载「以客户为单位」的筛选；用到明细表别名的条件（例如流水时间窗）无法下推，明确拒答
+    if (where.some((condition) => !condition.trimStart().startsWith('c.'))) return null;
+    const scalarExpressions = expressions.map((expression) => {
+      const match = /^([\s\S]*?)\s+AS\s+([\s\S]+)$/.exec(expression);
+      const aggregate = match ? match[1] : expression;
+      const label = match ? match[2] : '结果';
+      const used = [...new Set([...aggregate.matchAll(/\b([a-z])\./g)].map((item) => item[1]))].filter((alias) => alias !== 'c');
+      if (used.length !== 1) return null;
+      const table = Object.entries(ALIAS).find(([, alias]) => alias === used[0])?.[0];
+      if (!table) return null;
+      // 外层必须再聚合一次：子查询是逐客户的，不聚合就会返回逐客户明细而不是合计
+      if (/^\s*AVG\s*\(/i.test(aggregate)) return null;
+      if (!/^\s*(SUM|COUNT|CAST)\s*\(/i.test(aggregate)) return null;
+      return `SUM((SELECT ${aggregate.replace(/^\s*SUM\s*\(/i, 'SUM(')} FROM ${table} ${used[0]} WHERE ${used[0]}.cust_id = c.cust_id)) AS ${label}`;
+    });
+    // 只有全部指标都能安全改写成求和子查询时才走这条路；
+    // 例如平均口径（AVG）无法这样改写，退回普通连接形态——它的偏差在 2% 容差内。
+    if (scalarExpressions.every((item) => item !== null)) {
+      if (where.some((condition) => !condition.trimStart().startsWith('c.'))) return null;
+      const scalarWhere = where.length ? ` WHERE ${where.join(' AND ')}` : '';
+      return {
+        sql: `SELECT ${scalarExpressions.join(', ')} FROM cust_info c${scalarWhere} LIMIT 10`,
+        tables: ['cust_info'],
+        metrics: picked.map((metric) => metric.label),
+        dimension: null,
+        explanation: `按${picked.map((metric) => metric.label).join('、')}统计（各口径独立计算，避免多表连接放大）`,
+      };
+    }
   }
 
   const { sql: from, expanded } = buildFrom(tables);

@@ -111,3 +111,50 @@ describe('行数上限收敛不能破坏 SQL（回归 R3-1）', () => {
     expect(check.normalizedSql).not.toContain('10000');
   });
 });
+
+describe('多指标不能因连接而放大（回归 F1）', () => {
+  it('不同明细表的多个求和指标要走相关子查询', () => {
+    const sql = sqlOf('客户总资产与持仓市值');
+    expect(sql).toContain('FROM cust_asset a WHERE a.cust_id = c.cust_id');
+    expect(sql).toContain('FROM cust_holding h WHERE h.cust_id = c.cust_id');
+    expect(sql).not.toContain('JOIN cust_holding');
+  });
+
+  it('相关子查询外层必须再聚合一次，避免返回逐客户明细', () => {
+    expect(sqlOf('总资产与日均资产与持仓市值')).toContain('SUM((SELECT');
+  });
+
+  it('同表多指标仍走普通聚合，不改变既有形态', () => {
+    const sql = sqlOf('持仓市值与持仓成本');
+    expect(sql).toContain('JOIN cust_holding h');
+    expect(sql).not.toContain('SUM((SELECT');
+  });
+
+  it('多指标叠加流水分组条件无法下推时明确拒答', () => {
+    expect(planAnalyticsQuery('持仓市值与近 90 日交易金额')).toBeNull();
+  });
+});
+
+describe('未被理解的限定条件必须拒答（回归 F2）', () => {
+  it('意图类限定词一律拒答', () => {
+    for (const question of [
+      '有多少位客户在犹豫',
+      '有多少客户打算换券商',
+      '有多少客户对我们不满意',
+      '有多少客户可能会关户',
+      '有多少客户是潜在的高价值客户',
+    ]) {
+      expect(planAnalyticsQuery(question)).toBeNull();
+    }
+  });
+
+  it('否定语境不得按肯定口径统计', () => {
+    expect(planAnalyticsQuery('有多少客户最近不太活跃')).toBeNull();
+    expect(planAnalyticsQuery('不活跃的客户有多少')).toBeNull();
+  });
+
+  it('干净的数量提问仍然作答', () => {
+    expect(sqlOf('客户总数是多少')).toContain('客户数');
+    expect(sqlOf('我们一共有多少位客户')).toContain('客户数');
+  });
+});
