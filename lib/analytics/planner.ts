@@ -151,6 +151,8 @@ const DIMENSIONS: DimensionSpec[] = [
 function extractFilters(text: string, days: number | null) {
   const where: string[] = [];
   const tables = new Set<string>();
+  /** 识别到但当前无法正确实现的筛选条件（例如非资产指标的数值阈值） */
+  let unsupportedThreshold = false;
   const open = /及以上|以上|更高|至少|不低于/.test(text);
   /**
    * 明细类条件一律用子查询表达：并进 FROM 会把主表收窄，与「有没有」的语义不符。
@@ -219,6 +221,11 @@ function extractFilters(text: string, days: number | null) {
 
   // 资产门槛：只在出现比较词时才当筛选条件，避免把「总资产合计」里的数字误当阈值
   const threshold = /(?:总资产|资产)[^0-9]{0,8}([0-9]+(?:\.[0-9]+)?)\s*(万|亿)?/.exec(text);
+  // 阈值只对资产口径有明确实现；其它指标的阈值需要按客户先聚合再过滤，
+  // 目前没有可靠做法，因此识别到就交给上层拒答，而不是悄悄忽略条件。
+  const nonAssetThreshold = /(持仓市值|持仓成本|交易金额|净流入|日均资产)[^0-9]{0,8}[0-9]+\s*(万|亿)?/.test(text)
+    && /超过|大于|高于|以上|至少|不低于/.test(text);
+  if (nonAssetThreshold) unsupportedThreshold = true;
   if (threshold && /超过|大于|高于|以上|至少|不低于/.test(text)) {
     const unit = threshold[2] === '亿' ? 100000000 : threshold[2] === '万' ? 10000 : 1;
     tables.add('cust_asset');
@@ -260,7 +267,7 @@ function extractFilters(text: string, days: number | null) {
   // 任何用到 c. 别名的条件都要求客户主表在场
   if (where.some((condition) => condition.trimStart().startsWith('c.'))) tables.add('cust_info');
 
-  return { where, tables };
+  return { where, tables, unsupportedThreshold };
 }
 
 function extractWindowDays(text: string) {
@@ -367,6 +374,8 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
 
   const days = extractWindowDays(text);
   const filters = extractFilters(text, days);
+  // 识别到但无法正确实现的条件一律拒答，不能悄悄忽略后给一个错数
+  if (filters.unsupportedThreshold) return null;
   const tables = new Set<string>(filters.tables);
   for (const metric of picked) metric.tables.forEach((table) => tables.add(table));
   if (dimension) dimension.tables.forEach((table) => tables.add(table));
@@ -382,8 +391,20 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
     if (tables.has('cust_cashflow')) where.push(windowCondition('cust_cashflow', days));
   }
 
-  // 多张明细表并列聚合时，连接会把明细行数放大：SUM 会被重复计算（COUNT DISTINCT 不会）。
-  // 出现这种情况时改为「每个指标一个相关子查询」，从根上避免 fan-out。
+  const { sql: from, expanded } = buildFrom(tables);
+  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
+  const topN = /前\s*([0-9]+)\s*(名|位|个|条|大)/.exec(text);
+  const limit = topN ? Number(topN[1]) : grouped ? 100 : 10;
+
+  // 多表聚合的 fan-out 处理。
+  // 连接会把明细行数放大：1:n 表（持仓、交易、流水）与被连接的一行会重复出现，
+  // 于是 SUM 被重复累加。处理方式是「先按客户收敛，再在外层聚合」，而且要分两种情况：
+  //   · 指标在 1:n 表上 —— 分组内直接聚合就是对的；
+  //   · 指标在 1:1 表上 —— 分组内该行会随 1:n 行重复，必须改成只认客户的相关子查询。
+  const measureAliasTable: Record<string, string> = Object.fromEntries(
+    Object.entries(ALIAS).map(([table, alias]) => [alias, table]),
+  );
+  const oneToManyTables = new Set(['cust_holding', 'cust_trade', 'cust_cashflow']);
   const measureAliases = new Set<string>();
   for (const metric of picked) {
     for (const table of metric.tables) {
@@ -392,42 +413,58 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
       if (alias && expressions.some((expression) => new RegExp(`\\b${alias}\\.`).test(expression))) measureAliases.add(alias);
     }
   }
-  const needsScalar = expressions.length >= 2 && measureAliases.size >= 2;
-  if (needsScalar) {
-    // 相关子查询只能承载「以客户为单位」的筛选；用到明细表别名的条件（例如流水时间窗）无法下推，明确拒答
-    if (where.some((condition) => !condition.trimStart().startsWith('c.'))) return null;
-    const scalarExpressions = expressions.map((expression) => {
-      const match = /^([\s\S]*?)\s+AS\s+([\s\S]+)$/.exec(expression);
-      const aggregate = match ? match[1] : expression;
-      const label = match ? match[2] : '结果';
-      const used = [...new Set([...aggregate.matchAll(/\b([a-z])\./g)].map((item) => item[1]))].filter((alias) => alias !== 'c');
-      if (used.length !== 1) return null;
-      const table = Object.entries(ALIAS).find(([, alias]) => alias === used[0])?.[0];
-      if (!table) return null;
-      // 外层必须再聚合一次：子查询是逐客户的，不聚合就会返回逐客户明细而不是合计
-      if (/^\s*AVG\s*\(/i.test(aggregate)) return null;
-      if (!/^\s*(SUM|COUNT|CAST)\s*\(/i.test(aggregate)) return null;
-      return `SUM((SELECT ${aggregate.replace(/^\s*SUM\s*\(/i, 'SUM(')} FROM ${table} ${used[0]} WHERE ${used[0]}.cust_id = c.cust_id)) AS ${label}`;
+  const joinedOneToMany = [...expanded].filter((table) => oneToManyTables.has(table));
+  const riskySum = joinedOneToMany.length > 0
+    && [...measureAliases].some((alias) => {
+      const table = measureAliasTable[alias];
+      return table !== undefined && !oneToManyTables.has(table);
     });
-    // 只有全部指标都能安全改写成求和子查询时才走这条路；
-    // 例如平均口径（AVG）无法这样改写，退回普通连接形态——它的偏差在 2% 容差内。
-    if (scalarExpressions.every((item) => item !== null)) {
-      if (where.some((condition) => !condition.trimStart().startsWith('c.'))) return null;
-      const scalarWhere = where.length ? ` WHERE ${where.join(' AND ')}` : '';
-      return {
-        sql: `SELECT ${scalarExpressions.join(', ')} FROM cust_info c${scalarWhere} LIMIT 10`,
-        tables: ['cust_info'],
-        metrics: picked.map((metric) => metric.label),
-        dimension: null,
-        explanation: `按${picked.map((metric) => metric.label).join('、')}统计（各口径独立计算，避免多表连接放大）`,
-      };
-    }
-  }
+  const needsRewrite = riskySum || (expressions.length >= 2 && measureAliases.size >= 2);
+  // 人均换算的分母是客户数，逐客户收敛后再聚合语义会变，明确拒答而不是给错的数
+  if (needsRewrite && perCapita) return null;
 
-  const { sql: from, expanded } = buildFrom(tables);
-  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
-  const topN = /前\s*([0-9]+)\s*(名|位|个|条|大)/.exec(text);
-  const limit = topN ? Number(topN[1]) : grouped ? 100 : 10;
+  if (needsRewrite) {
+    const split = (expression: string) => {
+      const at = expression.lastIndexOf(' AS ');
+      return at < 0 ? { aggregate: expression, label: '结果' } : { aggregate: expression.slice(0, at), label: expression.slice(at + 4) };
+    };
+    /** 1:1 表上的聚合要改成相关子查询，否则一行会随 1:n 的每一行重复累加。 */
+    const isolated = (aggregate: string) => {
+      const used = [...new Set([...aggregate.matchAll(/\b([a-z])\./g)].map((item) => item[1]))]
+        .filter((alias) => alias !== 'c');
+      if (used.length !== 1) return aggregate;
+      const table = measureAliasTable[used[0]];
+      if (!table || oneToManyTables.has(table) || table === 'cust_info') return aggregate;
+      return `(SELECT ${aggregate} FROM ${table} ${used[0]} WHERE ${used[0]}.cust_id = c.cust_id)`;
+    };
+    const splitExpressions = expressions.map(split);
+    // 「平均」口径要拆成两层：内层先算每位客户的合计，外层再对客户求平均。
+    // 若内层也写 AVG，得到的是「单笔持仓的平均值」而不是「客户的平均值」，两者差一个数量级。
+    const innerAggregateOf = (aggregate: string) => aggregate.replace(/^(\s*)AVG\s*\(/i, '$1SUM(');
+    const innerColumns = [
+      'c.cust_id AS cust_id',
+      dimension ? `${dimension.expr} AS d0` : null,
+      ...splitExpressions.map((item, index) => `${isolated(innerAggregateOf(item.aggregate))} AS m${index}`),
+    ].filter(Boolean);
+    const innerGroup = ['c.cust_id', dimension?.expr].filter(Boolean).join(', ');
+    const innerSql = `SELECT ${innerColumns.join(', ')} ${from}${whereSql} GROUP BY ${innerGroup}`;
+    const outerColumns = [
+      dimension ? `t.d0 AS ${dimension.label}` : null,
+      // 外层必须沿用原口径：SUM 指标求和，AVG 指标求平均（客户等权，与整体平均的偏差在 2% 容差内）
+      ...splitExpressions.map((item, index) => `${/^\s*AVG\s*\(/i.test(item.aggregate) ? 'AVG' : 'SUM'}(t.m${index}) AS ${item.label}`),
+    ].filter(Boolean);
+    const rankingAlias = splitExpressions[0]?.label ?? '';
+    const outerSql = `SELECT ${outerColumns.join(', ')} FROM (${innerSql}) t`
+      + (dimension ? ` GROUP BY t.d0${rankingAlias ? ` ORDER BY ${rankingAlias} DESC` : ''}` : '')
+      + ` LIMIT ${limit}`;
+    return {
+      sql: outerSql,
+      tables: [...expanded].filter((table) => Object.prototype.hasOwnProperty.call(ALIAS, table)),
+      metrics: picked.map((metric) => metric.label),
+      dimension: dimension?.label ?? null,
+      explanation: `按${picked.map((metric) => metric.label).join('、')}统计${dimension ? `，并按${dimension.label}分组` : ''}（先按客户收敛再汇总，避免多表连接重复累加）`,
+    };
+  }
 
   const selectSql = [
     dimension ? `${dimension.expr} AS ${dimension.label}` : null,

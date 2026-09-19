@@ -113,15 +113,24 @@ describe('行数上限收敛不能破坏 SQL（回归 R3-1）', () => {
 });
 
 describe('多指标不能因连接而放大（回归 F1）', () => {
-  it('不同明细表的多个求和指标要走相关子查询', () => {
+  it('多表指标要先按客户收敛，1:1 表上的聚合改走相关子查询', () => {
     const sql = sqlOf('客户总资产与持仓市值');
-    expect(sql).toContain('FROM cust_asset a WHERE a.cust_id = c.cust_id');
-    expect(sql).toContain('FROM cust_holding h WHERE h.cust_id = c.cust_id');
-    expect(sql).not.toContain('JOIN cust_holding');
+    expect(sql).toContain('GROUP BY c.cust_id');
+    expect(sql).toContain('(SELECT SUM(a.total_asset) FROM cust_asset a WHERE a.cust_id = c.cust_id)');
+    expect(sql).toContain('SUM(t.m');
   });
 
-  it('相关子查询外层必须再聚合一次，避免返回逐客户明细', () => {
-    expect(sqlOf('总资产与日均资产与持仓市值')).toContain('SUM((SELECT');
+  it('分组形态同样要先收敛再聚合，不能丢掉分组', () => {
+    const sql = sqlOf('各客群标签的总资产与持仓市值');
+    expect(sql).toContain('GROUP BY c.cust_id, c.cust_tag');
+    expect(sql).toContain('GROUP BY t.d0');
+    expect(sql).toContain('t.d0 AS 客群标签');
+  });
+
+  it('平均口径要拆成「内层合计、外层求平均」', () => {
+    const sql = sqlOf('各客群标签的平均总资产与平均持仓市值');
+    expect(sql).toContain('SUM(h.market_value) AS m');
+    expect(sql).toContain('AVG(t.m');
   });
 
   it('同表多指标仍走普通聚合，不改变既有形态', () => {
@@ -130,8 +139,10 @@ describe('多指标不能因连接而放大（回归 F1）', () => {
     expect(sql).not.toContain('SUM((SELECT');
   });
 
-  it('多指标叠加流水分组条件无法下推时明确拒答', () => {
-    expect(planAnalyticsQuery('持仓市值与近 90 日交易金额')).toBeNull();
+  it('多指标叠加流水时间窗仍按客户收敛，不因条件复杂而算错', () => {
+    const sql = sqlOf('持仓市值与近 90 日交易金额');
+    expect(sql).toContain("t.trade_date >= date('2026-09-18', '-90 day')");
+    expect(sql).toContain('GROUP BY c.cust_id');
   });
 });
 
