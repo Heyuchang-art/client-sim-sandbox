@@ -21,7 +21,12 @@ export type ToolName =
   | 'strategy.draft'
   | 'simulation.run'
   | 'compliance.review'
-  | 'report.compose';
+  | 'report.compose'
+  | 'metadata.tables'
+  | 'metadata.describe'
+  | 'metadata.metrics'
+  | 'metadata.glossary'
+  | 'analytics.ask';
 
 export type HarnessEventType =
   | 'task.status'

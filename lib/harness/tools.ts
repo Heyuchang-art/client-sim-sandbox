@@ -13,6 +13,8 @@ import {
   type SimulationResult,
   relativeUtilityBreakdown,
 } from '../simulation';
+import { askAnalytics, type D1Like } from '../analytics/agent';
+import { listMetrics, listTables, lookupGlossary, describeTable } from '../analytics/metadata';
 import { buildMemorySummaries } from './memory';
 import { draftStrategiesWithModel, extractScenarioWithModel, planSteps } from './planner';
 import type {
@@ -42,6 +44,8 @@ export type HarnessContext = {
   findings: ComplianceFinding[];
   summary: TaskSummary | null;
   notes: string[];
+  /** 数据连接：取数类工具用它执行查询；推演流水线不需要，因此允许为空 */
+  db: D1Like | null;
   emit: (type: HarnessEventType, payload: Record<string, unknown>) => Promise<void>;
   ensureNotCancelled: () => Promise<void>;
 };
@@ -273,6 +277,70 @@ export const toolRegistry: Record<ToolName, HarnessTool> = {
         audit: `${blocked.length} 项违规、${pending.length} 项待人工确认，规则版本 ${RULE_VERSION}；违规话术已在推演前拦下并改写，此步是对整体方案与逐客话术的复核`,
         payload: { total: findings.length, blocked: blocked.length, pending: pending.length, ruleVersion: RULE_VERSION },
         status: blocked.length ? 'blocked' : pending.length ? 'pending' : 'completed',
+      };
+    },
+  },
+  // ——— 取数 Agent 的工具（赛题攻关任务一：元数据以工具形式暴露）———
+  // 这五个工具不在推演流水线的固定八步里：它们服务于「自然语言取数」这条链路，
+  // 由 /api/analytics/ask 与 metadata 接口调用，注册在这里是为了让平台只有一张工具表。
+  'metadata.tables': {
+    name: 'metadata.tables',
+    title: '查看可用数据表',
+    intent: '列出九张业务表及用途，用于判断一个问题该查哪几张表',
+    async run() {
+      const tables = listTables();
+      return { audit: `返回 ${tables.length} 张业务表`, payload: { tables } };
+    },
+  },
+  'metadata.describe': {
+    name: 'metadata.describe',
+    title: '查看表字段',
+    intent: '给出指定表的字段、类型与业务口径，写查询前必须先查这一步',
+    async run(context) {
+      const table = typeof context.prompt === 'string' ? context.prompt.trim().slice(0, 60) : '';
+      const described = describeTable(table);
+      return described
+        ? { audit: `返回 ${table} 的 ${described.columns.length} 个字段`, payload: { table: described } }
+        : { audit: `未登记的表：${table}`, payload: { error: '未登记的表' }, status: 'blocked' as const };
+    },
+  },
+  'metadata.metrics': {
+    name: 'metadata.metrics',
+    title: '查看指标口径',
+    intent: '列出已登记指标的口径、单位与依赖表，未登记指标不允许自行发明',
+    async run() {
+      const metrics = listMetrics();
+      return { audit: `返回 ${metrics.length} 个已登记指标`, payload: { metrics } };
+    },
+  },
+  'metadata.glossary': {
+    name: 'metadata.glossary',
+    title: '查询业务术语',
+    intent: '把「高净值客户」「活跃客户」这类业务说法翻译成字段与阈值条件',
+    async run(context) {
+      const term = typeof context.prompt === 'string' ? context.prompt.trim().slice(0, 40) : '';
+      const terms = lookupGlossary(term || undefined);
+      return { audit: `返回 ${terms.length} 条术语口径`, payload: { terms } };
+    },
+  },
+  'analytics.ask': {
+    name: 'analytics.ask',
+    title: '执行一次取数',
+    intent: '把自然语言问题翻译成只读查询，经三层安全围栏校验后执行并返回结果',
+    async run(context) {
+      if (!context.db) {
+        return { audit: '当前运行环境没有可用的数据连接，取数工具未执行。', payload: { skipped: true }, status: 'blocked' as const };
+      }
+      const question = typeof context.prompt === 'string' ? context.prompt.trim().slice(0, 200) : '';
+      if (!question) {
+        return { audit: '问题为空，取数工具未执行。', payload: { skipped: true }, status: 'blocked' as const };
+      }
+      const answer = await askAnalytics(context.db, question, context.config);
+      const blocked = answer.guardrail.findings.filter((finding) => finding.disposition === '拦截');
+      return {
+        audit: `${answer.mode === 'llm' ? '模型' : '规则'}路径生成查询，安全围栏${answer.guardrail.passed ? '通过' : `拦截（${blocked.map((finding) => finding.rule).join('、')}）`}，返回 ${answer.rowCount} 行`,
+        payload: { ...answer },
+        status: answer.guardrail.passed ? 'completed' : 'blocked',
       };
     },
   },

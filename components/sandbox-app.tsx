@@ -21,6 +21,7 @@ import {
   Megaphone,
   Pause,
   Play,
+  MessagesSquare,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -106,10 +107,11 @@ import {
   type RunState,
 } from '@/lib/client/run-task';
 
-type View = 'tasks' | 'customers' | 'sandbox' | 'audit' | 'skills';
+type View = 'tasks' | 'ask' | 'customers' | 'sandbox' | 'audit' | 'skills';
 
 const nav = [
   { id: 'tasks' as const, label: '智能任务中心', icon: LayoutDashboard },
+  { id: 'ask' as const, label: '数据问答', icon: MessagesSquare },
   { id: 'customers' as const, label: '客户洞察中心', icon: CircleUserRound },
   { id: 'sandbox' as const, label: '群体行为沙盘', icon: Network },
   { id: 'audit' as const, label: '策略与审计', icon: ShieldCheck },
@@ -143,8 +145,8 @@ function AppShell({
               <BrainCircuit className="size-5" />
             </div>
             <div>
-              <p className="font-heading text-sm font-semibold tracking-tight text-sidebar-foreground">证券客户行为沙盘</p>
-              <p className="text-xs text-sidebar-foreground/55">ClientSim Agent</p>
+              <p className="font-heading text-sm font-semibold tracking-tight text-sidebar-foreground">证券客户营销取数智能体</p>
+              <p className="text-xs text-sidebar-foreground/55">ClientSim Ask</p>
             </div>
           </button>
 
@@ -172,7 +174,7 @@ function AppShell({
             <p className="text-[10px] font-semibold uppercase tracking-[.16em] text-sidebar-foreground/35">系统状态</p>
             <div className="mt-3 space-y-3 text-xs text-sidebar-foreground/65">
               <div className="flex justify-between" title="Agent 自主拆解任务步骤（Planner）"><span>任务规划</span><span className="text-emerald-400">正常</span></div>
-              <div className="flex justify-between" title="可被调用的工具集合（Tool Registry）"><span>可用工具</span><span>8 项</span></div>
+              <div className="flex justify-between" title="可被调用的工具集合（Tool Registry）：推演八步 + 取数五件套"><span>可用工具</span><span>13 项</span></div>
               <div className="flex justify-between" title="合规硬边界审查（Policy Gateway）"><span>合规审查</span><span className="text-emerald-400">已开启</span></div>
             </div>
           </div>
@@ -404,6 +406,279 @@ function TaskCenter({ result, runState, prompt, setPrompt, onRun, onCancel, onNa
   );
 }
 
+const askSamples = [
+  '客户总数是多少',
+  '各营业部的持仓市值',
+  '持有科技成长组合的高净值客户有多少人',
+  '近 90 日的净流入是多少',
+  '各客户经理名下的客户数（前 10 名）',
+];
+
+type GuardrailFindingView = {
+  layer: string;
+  rule: string;
+  title: string;
+  disposition: string;
+  detail: string;
+};
+
+type AskAgentPayload = {
+  question: string;
+  mode: 'llm' | 'rule' | 'degraded';
+  model: string | null;
+  sql: string;
+  guardrail: { passed: boolean; findings: GuardrailFindingView[]; tables: string[] };
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+  rowCount: number;
+  explanation: string;
+  answer: string;
+  metrics: string[];
+  latencyMs: number;
+  notes: string[];
+  fallbackReason: string | null;
+  understood: boolean;
+  interpreted: string;
+  error?: string;
+};
+
+const askModeLabels: Record<string, string> = { llm: '模型生成查询', rule: '规则生成查询', degraded: '已降级为规则' };
+
+function cellText(value: unknown) {
+  if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString('zh-CN') : value.toFixed(4);
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '—';
+  return JSON.stringify(value);
+}
+
+function AskView({ result, onNavigate }: { result: SimulationResult; onNavigate: (view: View) => void }) {
+  const [question, setQuestion] = useState(askSamples[0]);
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer] = useState<AskAgentPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<{ tableCount: number; metricCount: number; toolCount: number } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/analytics/metadata')
+      .then((response) => response.json() as Promise<{ tables?: unknown[]; metrics?: unknown[]; tools?: unknown[] }>)
+      .then((data) => {
+        if (!alive) return;
+        setCatalog({
+          tableCount: (data.tables ?? []).length,
+          metricCount: (data.metrics ?? []).length,
+          toolCount: (data.tools ?? []).length,
+        });
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
+
+  const ask = async (text: string) => {
+    const next = text.trim();
+    if (!next || asking) return;
+    setAsking(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/analytics/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: next }),
+      });
+      const data = (await response.json()) as AskAgentPayload;
+      if (!response.ok && response.status !== 422) {
+        setAnswer(null);
+        setError(data.error ?? '取数失败，请稍后重试。');
+      } else {
+        setAnswer(data);
+      }
+    } catch {
+      setAnswer(null);
+      setError('取数请求失败，请检查服务端是否可用。');
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  const blocked = answer ? answer.guardrail.findings.filter((finding) => finding.disposition === '拦截') : [];
+  const warnings = answer ? answer.guardrail.findings.filter((finding) => finding.disposition === '提醒') : [];
+
+  const steps = answer
+    ? [
+        {
+          icon: BrainCircuit,
+          label: '理解意图',
+          state: answer.understood ? 'ok' : 'warn',
+          detail: answer.understood ? answer.explanation || '已识别为一次取数请求' : '没听清这个问题，建议换一种问法',
+        },
+        {
+          icon: Boxes,
+          label: '检索元数据',
+          state: 'ok',
+          detail: `用到 ${answer.guardrail.tables.length} 张表：${answer.guardrail.tables.join('、') || '未识别到表'}${answer.metrics.length > 0 ? ` · 指标：${answer.metrics.join('、')}` : ''}`,
+        },
+        {
+          icon: Search,
+          label: '生成查询',
+          state: answer.mode === 'degraded' ? 'warn' : 'ok',
+          detail: askModeLabels[answer.mode] ?? answer.mode,
+        },
+        {
+          icon: answer.guardrail.passed ? ShieldCheck : ShieldAlert,
+          label: '安全围栏校验',
+          state: answer.guardrail.passed ? 'ok' : 'block',
+          detail: answer.guardrail.passed
+            ? `三层校验通过${warnings.length > 0 ? `，${warnings.length} 条提醒` : ''}`
+            : `拦截 ${blocked.length} 项：${blocked.map((finding) => `${finding.rule} ${finding.title}`).join('；')}`,
+        },
+        {
+          icon: FileCheck2,
+          label: '执行结果',
+          state: answer.understood ? 'ok' : 'warn',
+          detail: answer.understood ? `返回 ${answer.rowCount} 行 · 耗时 ${answer.latencyMs} 毫秒` : '未执行',
+        },
+      ]
+    : [];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-heading text-xl font-semibold">数据问答</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            用一句话问客户数据。系统会先查元数据、再生成查询，经三层安全围栏校验后才执行，并告诉你它理解成了什么。
+          </p>
+        </div>
+        {catalog && (
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <Badge variant="outline">{catalog.tableCount} 张业务表</Badge>
+            <Badge variant="outline">{catalog.metricCount} 个已登记指标</Badge>
+            <Badge variant="outline">{catalog.toolCount} 个可调用工具</Badge>
+          </div>
+        )}
+      </div>
+
+      <Card className="border-primary/15 bg-[linear-gradient(145deg,var(--card),color-mix(in_oklch,var(--primary)_4%,var(--card)))]">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><MessagesSquare className="size-4 text-primary" />问一个关于客户的问题</CardTitle>
+          <CardDescription>可以问人数、资产、持仓、交易、资金流水的合计与平均，也可以按营业部、客群标签、风险等级、产品等维度分组。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Textarea
+              aria-label="数据问题"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void ask(question); } }}
+              className="min-h-11 resize-none border-primary/15 bg-background"
+              placeholder="例如：持有科技成长组合的高净值客户有多少人"
+            />
+            <Button className="sm:w-32" onClick={() => void ask(question)} disabled={asking}>
+              {asking ? <LoaderCircle className="animate-spin" /> : <Search />}开始取数
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {askSamples.map((sample) => (
+              <button
+                key={sample}
+                onClick={() => { setQuestion(sample); void ask(sample); }}
+                disabled={asking}
+                className="rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
+              >
+                {sample}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {error && <Alert className="border-rose-200 bg-rose-50 text-rose-900"><TriangleAlert /><AlertTitle>{error}</AlertTitle><AlertDescription>可以换一种问法，或检查服务端是否在运行。</AlertDescription></Alert>}
+
+      {answer && (
+        <Card>
+          <CardHeader>
+            <CardTitle>执行链路</CardTitle>
+            <CardDescription>
+              查询范围是仓库里的客户数据（当前演示数据 {result.customerCount} 名客户）
+              {answer.model ? ` · 模型 ${answer.model}` : ' · 未接入模型，全程用规则生成'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {steps.map((step, index) => (
+              <div key={step.label} className="flex items-start gap-3 rounded-lg border p-3">
+                <span className={'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ' + (step.state === 'ok' ? 'bg-emerald-100 text-emerald-700' : step.state === 'block' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700')}>{index + 1}</span>
+                <step.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{step.label}</div>
+                  <div className="mt-0.5 break-words text-xs leading-5 text-muted-foreground">{step.detail}</div>
+                </div>
+              </div>
+            ))}
+            {answer.fallbackReason && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                <span className="font-semibold">降级说明：</span>{answer.fallbackReason}
+              </div>
+            )}
+            {answer.sql && (
+              <div className="rounded-lg border bg-muted/40 p-3">
+                <div className="mb-1.5 text-xs font-medium text-muted-foreground">实际执行的查询</div>
+                <code className="block break-all font-mono text-[11px] leading-5">{answer.sql}</code>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {answer && answer.understood && (
+        <Card>
+          <CardHeader>
+            <CardTitle>查询结果</CardTitle>
+            <CardDescription>{answer.answer}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {answer.rows.length > 0 && (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>{answer.columns.map((column) => <TableHead key={column}>{column}</TableHead>)}</TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {answer.rows.slice(0, 30).map((row, index) => (
+                      <TableRow key={index}>
+                        {answer.columns.map((column) => <TableCell key={column} className="font-mono text-xs">{cellText(row[column])}</TableCell>)}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {answer.rows.length > 30 && <p className="mt-2 text-xs text-muted-foreground">共 {answer.rowCount} 行，这里展示前 30 行。</p>}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => onNavigate('sandbox')}>
+                <FlaskConical />用这批客户跑一次推演
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onNavigate('audit')}>
+                <ListChecks />去审计中心看这次取数
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">
+              取数只回答「有多少、有多少钱」；想知道「如果这么做会怎样」，用上面的按钮把结果带进群体行为沙盘推演。
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {answer && !answer.understood && (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+          <TriangleAlert />
+          <AlertTitle>这个问题超出了当前可查范围</AlertTitle>
+          <AlertDescription>{answer.interpreted}。系统宁可明确说不会，也不猜一个数字给你。</AlertDescription>
+        </Alert>
+      )}
+    </div>
+  );
+}
+
 function CustomerInsights({ result }: { result: SimulationResult }) {
   const [selectedId, setSelectedId] = useState(result.customers[0].id);
   const [step, setStep] = useState(Math.min(6, result.scenario.timeSteps));
@@ -540,7 +815,7 @@ function AuditView({ result, outcome, onNavigate }: { result: SimulationResult; 
     const recommended = result.strategies.find((item) => item.id === result.recommended)!;
     const finalState = recommended.snapshots.at(-1)!;
     return [
-      '证券客户行为沙盘 - 策略模拟报告',
+      '证券客户营销取数智能体 - 策略模拟报告',
       '',
       '场景：' + scenarioLabel(result.scenario),
       '场景参数：跌幅 ' + (Math.abs(result.scenario.marketShock) * 100).toFixed(0) + '%，持续 ' + result.scenario.durationHours + ' 小时，客户 ' + result.scenario.customerCount + ' 名，共 ' + result.scenario.timeSteps + ' 段推演，随机种子 ' + result.scenario.seed,
@@ -587,7 +862,7 @@ function AuditView({ result, outcome, onNavigate }: { result: SimulationResult; 
     if (!text) text = buildLocalReport();
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
-    link.href = url; link.download = '证券客户行为沙盘-策略模拟报告.txt'; link.click(); URL.revokeObjectURL(url);
+    link.href = url; link.download = '证券客户营销取数智能体-策略模拟报告.txt'; link.click(); URL.revokeObjectURL(url);
   };
 
   const submitFeedback = async () => {
@@ -884,7 +1159,8 @@ export function SandboxApp() {
   };
 
   let content;
-  if (active === 'customers') content = <CustomerInsights result={result} />;
+  if (active === 'ask') content = <AskView result={result} onNavigate={setActive} />;
+  else if (active === 'customers') content = <CustomerInsights result={result} />;
   else if (active === 'sandbox') content = <SandboxView result={result} />;
   else if (active === 'audit') content = <AuditView result={result} outcome={outcome} onNavigate={setActive} />;
   else if (active === 'skills') content = <SkillsView />;

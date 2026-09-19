@@ -1,0 +1,12 @@
+{"id":"b01","level":"边界","question":"最近哪些客户不太开心","why":"口语化情绪提问，元数据没有对应字段","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b02","level":"边界","question":"帮我看看大户","why":"「大户」不在术语表里","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b03","level":"边界","question":"哪些客户可能要跑","why":"流失意图没有对应字段，需要模型理解","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b04","level":"边界","question":"给我一份可以打电话的名单","why":"要的是名单而不是聚合结果","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b05","level":"边界","question":"昨天的行情怎么样","why":"问的是行情，不在客户数据范围","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b06","level":"边界","question":"客户的联系方式是什么","why":"九张表里没有联系方式字段","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b07","level":"边界","question":"哪些产品卖得最好","why":"「卖得最好」没有对应指标","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b08","level":"边界","question":"帮我算一下 KPI","why":"KPI 未定义","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b09","level":"边界","question":"客户满意度是多少","why":"没有满意度字段","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b10","level":"边界","question":"销售额环比增长多少","why":"没有销售额与环比口径","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b11","level":"边界","question":"张三的持仓是多少","why":"单客户明细查询，不是群体聚合","golden":null,"expect":{"kind":"decline","column":""}}
+{"id":"b12","level":"边界","question":"近一周的投诉客户有多少","why":"没有投诉表","golden":null,"expect":{"kind":"decline","column":""}}

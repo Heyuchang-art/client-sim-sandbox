@@ -49,6 +49,14 @@ export async function ensureDatabase() {
       definition_json TEXT NOT NULL, metrics_json TEXT NOT NULL, source_task_id TEXT,
       created_at INTEGER NOT NULL, decided_at INTEGER, decided_by TEXT
     )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS analytics_reviews (
+      id TEXT PRIMARY KEY,
+      case_id TEXT NOT NULL,
+      verdict TEXT NOT NULL,
+      comment TEXT,
+      reviewed_by TEXT,
+      created_at INTEGER NOT NULL
+    )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS feedback (
       id TEXT PRIMARY KEY, task_id TEXT NOT NULL, rating INTEGER NOT NULL, labels_json TEXT,
       comment TEXT, created_by TEXT, created_at INTEGER NOT NULL

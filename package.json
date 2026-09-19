@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate",
     "eval:plan": "node scripts/run.mjs scripts/eval-plan.ts",
     "eval:compliance": "node scripts/run.mjs scripts/eval-compliance.ts",
-    "eval:strategies": "node scripts/run.mjs scripts/sweep-strategies.ts"
+    "eval:strategies": "node scripts/run.mjs scripts/sweep-strategies.ts",
+    "eval:ask": "node scripts/run.mjs scripts/eval-ask.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

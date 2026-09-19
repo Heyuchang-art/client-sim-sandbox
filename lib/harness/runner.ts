@@ -1,3 +1,4 @@
+import type { D1Like } from '../analytics/agent';
 import { defaultScenario, parseScenarioPrompt, type ScenarioConfig } from '../scenario';
 import { ModelUnavailableError, ModelTimeoutError, errorCodeOf, type ModelConfig } from '../model/adapter';
 import { RULE_VERSION } from '../compliance';
@@ -32,6 +33,8 @@ export type RunnerOptions = {
   totalTimeoutMs?: number;
   maxAttempts?: number;
   now?: () => number;
+  /** 取数类工具需要的数据连接；推演流水线不依赖它 */
+  db?: D1Like | null;
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -166,6 +169,7 @@ export async function runTask(options: RunnerOptions): Promise<TaskRunOutcome> {
   };
 
   const context: HarnessContext = {
+    db: options.db ?? null,
     taskId,
     prompt,
     config,

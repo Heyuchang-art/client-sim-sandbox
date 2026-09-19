@@ -1,0 +1,1242 @@
+{
+  "main": {
+    "generatedAt": "2026-09-19T10:59:51.971Z",
+    "version": "0.2.0",
+    "label": "样本内语料（50 条）",
+    "corpusPath": "C:\\Users\\admin\\Desktop\\华泰证券杯\\securities-customer-sandbox\\evals\\ask-corpus.jsonl",
+    "total": 50,
+    "accuracy": 1,
+    "threshold": 0.9,
+    "passed": true,
+    "modelConfigured": false,
+    "byLevel": {
+      "简单": {
+        "total": 18,
+        "ok": 18,
+        "accuracy": 1
+      },
+      "中等": {
+        "total": 18,
+        "ok": 18,
+        "accuracy": 1
+      },
+      "复杂": {
+        "total": 14,
+        "ok": 14,
+        "accuracy": 1
+      }
+    },
+    "modeCounts": {
+      "rule": 50
+    },
+    "failures": [],
+    "results": [
+      {
+        "id": "q01",
+        "level": "简单",
+        "question": "客户总数是多少",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          1000
+        ],
+        "actualValue": [
+          1000
+        ],
+        "latencyMs": 2
+      },
+      {
+        "id": "q02",
+        "level": "简单",
+        "question": "C4 风险等级的客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c WHERE c.risk_level = 'C4' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          163
+        ],
+        "actualValue": [
+          163
+        ],
+        "latencyMs": 1
+      },
+      {
+        "id": "q03",
+        "level": "简单",
+        "question": "客户的平均年龄是多少",
+        "mode": "rule",
+        "sql": "SELECT AVG(c.age) AS 平均年龄 FROM cust_info c LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          47.529
+        ],
+        "actualValue": [
+          47.529
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q04",
+        "level": "简单",
+        "question": "高净值客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c WHERE c.cust_tag = '高净值客户' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          198
+        ],
+        "actualValue": [
+          198
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q05",
+        "level": "简单",
+        "question": "活跃客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c WHERE c.cust_id IN (SELECT cust_id FROM cust_trade WHERE trade_date >= date('2026-09-18', '-90 day')) LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          582
+        ],
+        "actualValue": [
+          582
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q06",
+        "level": "简单",
+        "question": "沉默客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c WHERE c.cust_id NOT IN (SELECT cust_id FROM cust_trade WHERE trade_date >= date('2026-09-18', '-90 day')) AND c.cust_id NOT IN (SELECT cust_id FROM cust_cashflow WHERE flow_type = '流入' AND flow_date >= date('2026-09-18', '-90 day')) LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          347
+        ],
+        "actualValue": [
+          347
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q07",
+        "level": "简单",
+        "question": "在售产品一共有多少只",
+        "mode": "rule",
+        "sql": "SELECT COUNT(*) AS 产品数 FROM prod_info p LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          20
+        ],
+        "actualValue": [
+          20
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q08",
+        "level": "简单",
+        "question": "风险等级 R5 的产品有几只",
+        "mode": "rule",
+        "sql": "SELECT COUNT(*) AS 产品数 FROM prod_info p WHERE p.risk_level = 5 LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          5
+        ],
+        "actualValue": [
+          5
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q09",
+        "level": "简单",
+        "question": "客户总资产合计是多少",
+        "mode": "rule",
+        "sql": "SELECT SUM(a.total_asset) AS 总资产合计 FROM cust_info c JOIN cust_asset a ON c.cust_id = a.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          11780575938
+        ],
+        "actualValue": [
+          11780575938
+        ],
+        "latencyMs": 1
+      },
+      {
+        "id": "q10",
+        "level": "简单",
+        "question": "客户日均资产合计是多少",
+        "mode": "rule",
+        "sql": "SELECT SUM(a.daily_avg_asset) AS 日均资产合计, SUM(a.total_asset) AS 总资产合计 FROM cust_info c JOIN cust_asset a ON c.cust_id = a.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          10942305697
+        ],
+        "actualValue": [
+          10942305697
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q11",
+        "level": "简单",
+        "question": "客户的平均总资产是多少",
+        "mode": "rule",
+        "sql": "SELECT AVG(a.total_asset) AS 平均总资产 FROM cust_info c JOIN cust_asset a ON c.cust_id = a.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          11780575.938
+        ],
+        "actualValue": [
+          11780575.938
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q12",
+        "level": "简单",
+        "question": "持仓市值合计是多少",
+        "mode": "rule",
+        "sql": "SELECT SUM(h.market_value) AS 持仓市值合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          8066582414
+        ],
+        "actualValue": [
+          8066582414
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q13",
+        "level": "简单",
+        "question": "持仓记录一共有多少笔",
+        "mode": "rule",
+        "sql": "SELECT COUNT(*) AS 持仓笔数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          2503
+        ],
+        "actualValue": [
+          2503
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q14",
+        "level": "简单",
+        "question": "客户经理一共有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT m.mgr_id) AS 客户经理数 FROM mgr_info m LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          50
+        ],
+        "actualValue": [
+          50
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q15",
+        "level": "简单",
+        "question": "交易记录一共有多少笔",
+        "mode": "rule",
+        "sql": "SELECT COUNT(*) AS 交易笔数 FROM cust_info c JOIN cust_trade t ON c.cust_id = t.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          5219
+        ],
+        "actualValue": [
+          5219
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q16",
+        "level": "简单",
+        "question": "资金流水一共有多少条",
+        "mode": "rule",
+        "sql": "SELECT COUNT(*) AS 流水条数 FROM cust_info c JOIN cust_cashflow f ON c.cust_id = f.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          2489
+        ],
+        "actualValue": [
+          2489
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q17",
+        "level": "简单",
+        "question": "持仓的平均收益率是多少",
+        "mode": "rule",
+        "sql": "SELECT AVG(h.profit_ratio) AS 平均收益率 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          -0.1209111066719936
+        ],
+        "actualValue": [
+          -0.1209111066719936
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q18",
+        "level": "简单",
+        "question": "客户持仓的总成本是多少",
+        "mode": "rule",
+        "sql": "SELECT SUM(h.cost_value) AS 持仓成本合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          9357818956
+        ],
+        "actualValue": [
+          9357818956
+        ],
+        "latencyMs": 1
+      },
+      {
+        "id": "q19",
+        "level": "中等",
+        "question": "持有科技成长组合的客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.prod_name = '科技成长组合' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          106
+        ],
+        "actualValue": [
+          106
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q20",
+        "level": "中等",
+        "question": "持有新能源主题基金的客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.prod_name = '新能源主题基金' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          114
+        ],
+        "actualValue": [
+          114
+        ],
+        "latencyMs": 1
+      },
+      {
+        "id": "q21",
+        "level": "中等",
+        "question": "持有高风险产品（R4 及以上）的客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.risk_level >= 4 LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          721
+        ],
+        "actualValue": [
+          721
+        ],
+        "latencyMs": 1
+      },
+      {
+        "id": "q22",
+        "level": "中等",
+        "question": "高净值客户的持仓市值合计是多少",
+        "mode": "rule",
+        "sql": "SELECT SUM(h.market_value) AS 持仓市值合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id WHERE c.cust_tag = '高净值客户' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          7600717234
+        ],
+        "actualValue": [
+          7600717234
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q23",
+        "level": "中等",
+        "question": "C5 客户的持仓市值合计是多少",
+        "mode": "rule",
+        "sql": "SELECT SUM(h.market_value) AS 持仓市值合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id WHERE c.risk_level = 'C5' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          1207575360
+        ],
+        "actualValue": [
+          1207575360
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q24",
+        "level": "中等",
+        "question": "持有科技成长组合的客户总资产是多少",
+        "mode": "rule",
+        "sql": "SELECT SUM(a.total_asset) AS 总资产合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id JOIN cust_asset a ON c.cust_id = a.cust_id WHERE p.prod_name = '科技成长组合' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          1383683594
+        ],
+        "actualValue": [
+          1383683594
+        ],
+        "latencyMs": 1
+      },
+      {
+        "id": "q25",
+        "level": "中等",
+        "question": "医药主题基金的持仓市值是多少",
+        "mode": "rule",
+        "sql": "SELECT SUM(h.market_value) AS 持仓市值合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.prod_name = '医药主题基金' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          277690897
+        ],
+        "actualValue": [
+          277690897
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q26",
+        "level": "中等",
+        "question": "有持仓记录的客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          1000
+        ],
+        "actualValue": [
+          1000
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q27",
+        "level": "中等",
+        "question": "有交易记录的客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_trade t ON c.cust_id = t.cust_id LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          918
+        ],
+        "actualValue": [
+          918
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q28",
+        "level": "中等",
+        "question": "有资金流出记录的客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_cashflow f ON c.cust_id = f.cust_id WHERE f.flow_type = '流出' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          755
+        ],
+        "actualValue": [
+          755
+        ],
+        "latencyMs": 1
+      },
+      {
+        "id": "q29",
+        "level": "中等",
+        "question": "主办关系的客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN service_relation s ON c.cust_id = s.cust_id WHERE s.is_primary = 1 LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          1000
+        ],
+        "actualValue": [
+          1000
+        ],
+        "latencyMs": 1
+      },
+      {
+        "id": "q30",
+        "level": "中等",
+        "question": "各客群标签的客户数分布",
+        "mode": "rule",
+        "sql": "SELECT c.cust_tag AS 客群标签, COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c GROUP BY c.cust_tag ORDER BY 客户数 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 2 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 0
+      },
+      {
+        "id": "q31",
+        "level": "中等",
+        "question": "各营业部的客户数分布",
+        "mode": "rule",
+        "sql": "SELECT c.branch AS 营业部, COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c GROUP BY c.branch ORDER BY 客户数 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 5 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 0
+      },
+      {
+        "id": "q32",
+        "level": "中等",
+        "question": "各风险等级的客户数分布",
+        "mode": "rule",
+        "sql": "SELECT c.risk_level AS 风险等级, COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c GROUP BY c.risk_level ORDER BY 客户数 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 5 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 0
+      },
+      {
+        "id": "q33",
+        "level": "中等",
+        "question": "各产品类型的持仓市值",
+        "mode": "rule",
+        "sql": "SELECT p.prod_type AS 产品类型, SUM(h.market_value) AS 持仓市值合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id GROUP BY p.prod_type ORDER BY 持仓市值合计 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 5 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      },
+      {
+        "id": "q34",
+        "level": "中等",
+        "question": "各客户经理名下的客户数（前 10 名）",
+        "mode": "rule",
+        "sql": "SELECT m.mgr_name AS 客户经理, COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN service_relation s ON c.cust_id = s.cust_id JOIN mgr_info m ON s.mgr_id = m.mgr_id GROUP BY m.mgr_name ORDER BY 客户数 DESC LIMIT 10",
+        "ok": true,
+        "reason": "分组全部一致（共 10 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      },
+      {
+        "id": "q35",
+        "level": "中等",
+        "question": "各产品的持仓客户数与持仓市值",
+        "mode": "rule",
+        "sql": "SELECT p.prod_name AS 产品, SUM(h.market_value) AS 持仓市值合计, COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id GROUP BY p.prod_name ORDER BY 持仓市值合计 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 20 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      },
+      {
+        "id": "q36",
+        "level": "中等",
+        "question": "各渠道的客户数分布",
+        "mode": "rule",
+        "sql": "SELECT c.channel AS 渠道, COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c GROUP BY c.channel ORDER BY 客户数 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 3 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      },
+      {
+        "id": "q37",
+        "level": "复杂",
+        "question": "持有科技成长组合且总资产超过 500 万的高净值客户有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id JOIN cust_asset a ON c.cust_id = a.cust_id WHERE c.cust_tag = '高净值客户' AND p.prod_name = '科技成长组合' AND a.total_asset >= 5000000 LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          19
+        ],
+        "actualValue": [
+          19
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q38",
+        "level": "复杂",
+        "question": "各风险等级客户的平均持仓市值",
+        "mode": "rule",
+        "sql": "SELECT c.risk_level AS 风险等级, AVG(h.market_value) AS 平均持仓市值 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id GROUP BY c.risk_level ORDER BY 平均持仓市值 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 5 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 0
+      },
+      {
+        "id": "q39",
+        "level": "复杂",
+        "question": "沉默客户中持有高风险产品（R4 及以上）的有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.risk_level >= 4 AND c.cust_id NOT IN (SELECT cust_id FROM cust_trade WHERE trade_date >= date('2026-09-18', '-90 day')) AND c.cust_id NOT IN (SELECT cust_id FROM cust_cashflow WHERE flow_type = '流入' AND flow_date >= date('2026-09-18', '-90 day')) LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          247
+        ],
+        "actualValue": [
+          247
+        ],
+        "latencyMs": 1
+      },
+      {
+        "id": "q40",
+        "level": "复杂",
+        "question": "各客群标签的平均总资产与平均持仓市值",
+        "mode": "rule",
+        "sql": "SELECT c.cust_tag AS 客群标签, AVG(h.market_value) AS 平均持仓市值, AVG(a.total_asset) AS 平均总资产 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN cust_asset a ON c.cust_id = a.cust_id GROUP BY c.cust_tag ORDER BY 平均持仓市值 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 2 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      },
+      {
+        "id": "q41",
+        "level": "复杂",
+        "question": "持有新能源主题基金的高净值客户总资产合计是多少",
+        "mode": "rule",
+        "sql": "SELECT SUM(a.total_asset) AS 总资产合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id JOIN cust_asset a ON c.cust_id = a.cust_id WHERE c.cust_tag = '高净值客户' AND p.prod_name = '新能源主题基金' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          1575500546
+        ],
+        "actualValue": [
+          1575500546
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q42",
+        "level": "复杂",
+        "question": "C5 客户持有 R5 产品的持仓市值合计",
+        "mode": "rule",
+        "sql": "SELECT SUM(h.market_value) AS 持仓市值合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE c.risk_level = 'C5' AND p.risk_level = 5 LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          356261727
+        ],
+        "actualValue": [
+          356261727
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q43",
+        "level": "复杂",
+        "question": "各营业部近 180 日的交易金额合计",
+        "mode": "rule",
+        "sql": "SELECT c.branch AS 营业部, SUM(t.trade_amount) AS 交易金额 FROM cust_info c JOIN cust_trade t ON c.cust_id = t.cust_id WHERE t.trade_date >= date('2026-09-18', '-180 day') GROUP BY c.branch ORDER BY 交易金额 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 5 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      },
+      {
+        "id": "q44",
+        "level": "复杂",
+        "question": "各客户画像的持仓市值与客户数",
+        "mode": "rule",
+        "sql": "SELECT c.archetype AS 客户画像, SUM(h.market_value) AS 持仓市值合计, COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id GROUP BY c.archetype ORDER BY 持仓市值合计 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 5 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      },
+      {
+        "id": "q45",
+        "level": "复杂",
+        "question": "各风险等级客户的人均资产",
+        "mode": "rule",
+        "sql": "SELECT c.risk_level AS 风险等级, SUM(a.total_asset) / COUNT(DISTINCT a.cust_id) AS 人均资产 FROM cust_info c JOIN cust_asset a ON c.cust_id = a.cust_id GROUP BY c.risk_level ORDER BY 人均资产 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 5 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 0
+      },
+      {
+        "id": "q46",
+        "level": "复杂",
+        "question": "各产品风险等级下持仓客户的平均收益率",
+        "mode": "rule",
+        "sql": "SELECT p.risk_level AS 产品风险等级, AVG(h.profit_ratio) AS 平均收益率 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id GROUP BY p.risk_level ORDER BY 平均收益率 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 5 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      },
+      {
+        "id": "q47",
+        "level": "复杂",
+        "question": "各渠道客户的近 180 日净流入合计",
+        "mode": "rule",
+        "sql": "SELECT c.channel AS 渠道, SUM(CASE WHEN f.flow_type = '流入' THEN f.amount ELSE -f.amount END) AS 净流入 FROM cust_info c JOIN cust_cashflow f ON c.cust_id = f.cust_id WHERE f.flow_date >= date('2026-09-18', '-180 day') GROUP BY c.channel ORDER BY 净流入 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 3 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 0
+      },
+      {
+        "id": "q48",
+        "level": "复杂",
+        "question": "各客群标签客户的近 180 日交易笔数",
+        "mode": "rule",
+        "sql": "SELECT c.cust_tag AS 客群标签, COUNT(*) AS 交易笔数 FROM cust_info c JOIN cust_trade t ON c.cust_id = t.cust_id WHERE t.trade_date >= date('2026-09-18', '-180 day') GROUP BY c.cust_tag ORDER BY 交易笔数 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 2 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      },
+      {
+        "id": "q49",
+        "level": "复杂",
+        "question": "持有医药主题基金的客户中，C4 及以上风险等级的有多少人",
+        "mode": "rule",
+        "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE c.risk_level IN ('C4', 'C5') AND p.prod_name = '医药主题基金' LIMIT 10",
+        "ok": true,
+        "reason": "一致",
+        "goldenValue": [
+          35
+        ],
+        "actualValue": [
+          35
+        ],
+        "latencyMs": 0
+      },
+      {
+        "id": "q50",
+        "level": "复杂",
+        "question": "各营业部的持仓市值与客户数",
+        "mode": "rule",
+        "sql": "SELECT c.branch AS 营业部, SUM(h.market_value) AS 持仓市值合计, COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id GROUP BY c.branch ORDER BY 持仓市值合计 DESC LIMIT 100",
+        "ok": true,
+        "reason": "分组全部一致（共 5 组）",
+        "goldenValue": null,
+        "actualValue": null,
+        "latencyMs": 1
+      }
+    ],
+    "notes": [
+      "未配置模型密钥，本次为规则路径（确定性规划器）评测——它是模型不可用时的兜底路径。"
+    ]
+  },
+  "optional": [
+    {
+      "generatedAt": "2026-09-19T10:59:52.082Z",
+      "version": "0.2.0",
+      "label": "留出集（15 条，交叉验证）",
+      "corpusPath": "C:\\Users\\admin\\Desktop\\华泰证券杯\\securities-customer-sandbox\\evals\\ask-heldout.jsonl",
+      "total": 15,
+      "accuracy": 1,
+      "threshold": 0.9,
+      "passed": true,
+      "modelConfigured": false,
+      "byLevel": {
+        "简单": {
+          "total": 5,
+          "ok": 5,
+          "accuracy": 1
+        },
+        "中等": {
+          "total": 6,
+          "ok": 6,
+          "accuracy": 1
+        },
+        "复杂": {
+          "total": 4,
+          "ok": 4,
+          "accuracy": 1
+        }
+      },
+      "modeCounts": {
+        "rule": 15
+      },
+      "failures": [],
+      "results": [
+        {
+          "id": "h01",
+          "level": "简单",
+          "question": "资产规模超过 3000 万的客户有多少人",
+          "mode": "rule",
+          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_asset a ON c.cust_id = a.cust_id WHERE a.total_asset >= 30000000 LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            125
+          ],
+          "actualValue": [
+            125
+          ],
+          "latencyMs": 1
+        },
+        {
+          "id": "h02",
+          "level": "简单",
+          "question": "近 30 日的交易金额是多少",
+          "mode": "rule",
+          "sql": "SELECT SUM(t.trade_amount) AS 交易金额 FROM cust_info c JOIN cust_trade t ON c.cust_id = t.cust_id WHERE t.trade_date >= date('2026-09-18', '-30 day') LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            1307623955
+          ],
+          "actualValue": [
+            1307623955
+          ],
+          "latencyMs": 0
+        },
+        {
+          "id": "h03",
+          "level": "简单",
+          "question": "各客户画像下的平均持仓成本",
+          "mode": "rule",
+          "sql": "SELECT c.archetype AS 客户画像, AVG(h.cost_value) AS 平均持仓成本 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id GROUP BY c.archetype ORDER BY 平均持仓成本 DESC LIMIT 100",
+          "ok": true,
+          "reason": "分组全部一致（共 5 组）",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 1
+        },
+        {
+          "id": "h04",
+          "level": "简单",
+          "question": "持有红利低波组合的客户平均年龄",
+          "mode": "rule",
+          "sql": "SELECT AVG(c.age) AS 平均年龄 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.prod_name = '红利低波组合' LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            46.859375
+          ],
+          "actualValue": [
+            46.859375
+          ],
+          "latencyMs": 0
+        },
+        {
+          "id": "h05",
+          "level": "简单",
+          "question": "普通客户的人均资产是多少",
+          "mode": "rule",
+          "sql": "SELECT SUM(a.total_asset) / COUNT(DISTINCT a.cust_id) AS 人均资产 FROM cust_info c JOIN cust_asset a ON c.cust_id = a.cust_id WHERE c.cust_tag = '普通客户' LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            858896.6122194513
+          ],
+          "actualValue": [
+            858896.6122194513
+          ],
+          "latencyMs": 0
+        },
+        {
+          "id": "h06",
+          "level": "中等",
+          "question": "近 60 日的净流入是多少",
+          "mode": "rule",
+          "sql": "SELECT SUM(CASE WHEN f.flow_type = '流入' THEN f.amount ELSE -f.amount END) AS 净流入 FROM cust_info c JOIN cust_cashflow f ON c.cust_id = f.cust_id WHERE f.flow_date >= date('2026-09-18', '-60 day') LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            13862281
+          ],
+          "actualValue": [
+            13862281
+          ],
+          "latencyMs": 0
+        },
+        {
+          "id": "h07",
+          "level": "中等",
+          "question": "C1 风险等级的客户总资产合计是多少",
+          "mode": "rule",
+          "sql": "SELECT SUM(a.total_asset) AS 总资产合计 FROM cust_info c JOIN cust_asset a ON c.cust_id = a.cust_id WHERE c.risk_level = 'C1' LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            410227468
+          ],
+          "actualValue": [
+            410227468
+          ],
+          "latencyMs": 1
+        },
+        {
+          "id": "h08",
+          "level": "中等",
+          "question": "持有沪深300指数增强的客户有多少人",
+          "mode": "rule",
+          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.prod_name = '沪深300指数增强' LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            131
+          ],
+          "actualValue": [
+            131
+          ],
+          "latencyMs": 0
+        },
+        {
+          "id": "h09",
+          "level": "中等",
+          "question": "各客户经理名下的主办客户数（前 5 名）",
+          "mode": "rule",
+          "sql": "SELECT m.mgr_name AS 客户经理, COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN service_relation s ON c.cust_id = s.cust_id JOIN mgr_info m ON s.mgr_id = m.mgr_id WHERE s.is_primary = 1 GROUP BY m.mgr_name ORDER BY 客户数 DESC LIMIT 5",
+          "ok": true,
+          "reason": "分组全部一致（共 5 组）",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 1
+        },
+        {
+          "id": "h10",
+          "level": "中等",
+          "question": "各客群标签客户的净流入",
+          "mode": "rule",
+          "sql": "SELECT c.cust_tag AS 客群标签, SUM(CASE WHEN f.flow_type = '流入' THEN f.amount ELSE -f.amount END) AS 净流入 FROM cust_info c JOIN cust_cashflow f ON c.cust_id = f.cust_id GROUP BY c.cust_tag ORDER BY 净流入 DESC LIMIT 100",
+          "ok": true,
+          "reason": "分组全部一致（共 2 组）",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "h11",
+          "level": "中等",
+          "question": "固收类产品的持仓市值是多少",
+          "mode": "rule",
+          "sql": "SELECT SUM(h.market_value) AS 持仓市值合计 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.prod_type = '固收类' LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            1440567357
+          ],
+          "actualValue": [
+            1440567357
+          ],
+          "latencyMs": 0
+        },
+        {
+          "id": "h12",
+          "level": "复杂",
+          "question": "风险等级 R2 及以上产品的持仓客户有多少人",
+          "mode": "rule",
+          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.risk_level >= 2 LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            967
+          ],
+          "actualValue": [
+            967
+          ],
+          "latencyMs": 2
+        },
+        {
+          "id": "h13",
+          "level": "复杂",
+          "question": "各渠道的交易笔数",
+          "mode": "rule",
+          "sql": "SELECT c.channel AS 渠道, COUNT(*) AS 交易笔数 FROM cust_info c JOIN cust_trade t ON c.cust_id = t.cust_id GROUP BY c.channel ORDER BY 交易笔数 DESC LIMIT 100",
+          "ok": true,
+          "reason": "分组全部一致（共 3 组）",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 1
+        },
+        {
+          "id": "h14",
+          "level": "复杂",
+          "question": "持有医药主题基金的客户的平均持仓市值",
+          "mode": "rule",
+          "sql": "SELECT AVG(h.market_value) AS 平均持仓市值 FROM cust_info c JOIN cust_holding h ON c.cust_id = h.cust_id JOIN prod_info p ON h.prod_id = p.prod_id WHERE p.prod_name = '医药主题基金' LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            2547622.908256881
+          ],
+          "actualValue": [
+            2547622.908256881
+          ],
+          "latencyMs": 0
+        },
+        {
+          "id": "h15",
+          "level": "复杂",
+          "question": "开户在南京鼓楼营业部的客户总资产是多少",
+          "mode": "rule",
+          "sql": "SELECT SUM(a.total_asset) AS 总资产合计 FROM cust_info c JOIN cust_asset a ON c.cust_id = a.cust_id WHERE c.branch = '南京鼓楼营业部' LIMIT 10",
+          "ok": true,
+          "reason": "一致",
+          "goldenValue": [
+            1835685993
+          ],
+          "actualValue": [
+            1835685993
+          ],
+          "latencyMs": 0
+        }
+      ],
+      "notes": [
+        "未配置模型密钥，本次为规则路径（确定性规划器）评测——它是模型不可用时的兜底路径。"
+      ]
+    },
+    {
+      "generatedAt": "2026-09-19T10:59:52.175Z",
+      "version": "0.2.0",
+      "label": "能力边界集（12 条，预期会出现拒答）",
+      "corpusPath": "C:\\Users\\admin\\Desktop\\华泰证券杯\\securities-customer-sandbox\\evals\\ask-boundary.jsonl",
+      "total": 12,
+      "accuracy": 0.8333,
+      "threshold": 0.9,
+      "passed": false,
+      "modelConfigured": false,
+      "byLevel": {
+        "边界": {
+          "total": 12,
+          "ok": 10,
+          "accuracy": 0.8333
+        }
+      },
+      "modeCounts": {
+        "rule": 12
+      },
+      "failures": [
+        {
+          "id": "b09",
+          "level": "边界",
+          "question": "客户满意度是多少",
+          "mode": "rule",
+          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c LIMIT 10",
+          "ok": false,
+          "reason": "超出元数据覆盖面却仍然给出了答案",
+          "goldenValue": null,
+          "actualValue": [
+            1000
+          ],
+          "latencyMs": 0
+        },
+        {
+          "id": "b12",
+          "level": "边界",
+          "question": "近一周的投诉客户有多少",
+          "mode": "rule",
+          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c LIMIT 10",
+          "ok": false,
+          "reason": "超出元数据覆盖面却仍然给出了答案",
+          "goldenValue": null,
+          "actualValue": [
+            1000
+          ],
+          "latencyMs": 1
+        }
+      ],
+      "results": [
+        {
+          "id": "b01",
+          "level": "边界",
+          "question": "最近哪些客户不太开心",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 1
+        },
+        {
+          "id": "b02",
+          "level": "边界",
+          "question": "帮我看看大户",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "b03",
+          "level": "边界",
+          "question": "哪些客户可能要跑",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "b04",
+          "level": "边界",
+          "question": "给我一份可以打电话的名单",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "b05",
+          "level": "边界",
+          "question": "昨天的行情怎么样",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "b06",
+          "level": "边界",
+          "question": "客户的联系方式是什么",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "b07",
+          "level": "边界",
+          "question": "哪些产品卖得最好",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "b08",
+          "level": "边界",
+          "question": "帮我算一下 KPI",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "b09",
+          "level": "边界",
+          "question": "客户满意度是多少",
+          "mode": "rule",
+          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c LIMIT 10",
+          "ok": false,
+          "reason": "超出元数据覆盖面却仍然给出了答案",
+          "goldenValue": null,
+          "actualValue": [
+            1000
+          ],
+          "latencyMs": 0
+        },
+        {
+          "id": "b10",
+          "level": "边界",
+          "question": "销售额环比增长多少",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "b11",
+          "level": "边界",
+          "question": "张三的持仓是多少",
+          "mode": "rule",
+          "sql": "",
+          "ok": true,
+          "reason": "已明确拒答并提示换问法",
+          "goldenValue": null,
+          "actualValue": null,
+          "latencyMs": 0
+        },
+        {
+          "id": "b12",
+          "level": "边界",
+          "question": "近一周的投诉客户有多少",
+          "mode": "rule",
+          "sql": "SELECT COUNT(DISTINCT c.cust_id) AS 客户数 FROM cust_info c LIMIT 10",
+          "ok": false,
+          "reason": "超出元数据覆盖面却仍然给出了答案",
+          "goldenValue": null,
+          "actualValue": [
+            1000
+          ],
+          "latencyMs": 1
+        }
+      ],
+      "notes": [
+        "未配置模型密钥，本次为规则路径（确定性规划器）评测——它是模型不可用时的兜底路径。"
+      ]
+    }
+  ]
+}
