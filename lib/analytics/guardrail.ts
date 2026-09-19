@@ -67,6 +67,14 @@ function stripLiterals(sql: string) {
   return sql.replace(/'(?:[^']|'')*'/g, "''");
 }
 
+/**
+ * 把字符串字面量换成等长空格：既避免把字面量内容当代码，又保持下标与原文一一对应。
+ * 用长度会变的 stripLiterals 去算下标，会切到字面量中间——这是上一版把 SQL 切坏的原因。
+ */
+function maskLiterals(sql: string) {
+  return sql.replace(/'(?:[^']|'')*'/g, (match) => ' '.repeat(match.length));
+}
+
 function tokenize(sql: string) {
   return (stripLiterals(sql).match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).map((token) => token.toUpperCase());
 }
@@ -145,11 +153,12 @@ export function inspectSql(rawSql: string): GuardrailCheck {
   }
 
   let normalizedSql = sql;
-  const totalLimitMatch = /\bLIMIT\s+(\d+)\b/i.exec(topLevel(stripped));
+  const totalLimitMatch = /\bLIMIT\s+(\d+)\b/i.exec(topLevel(maskLiterals(sql)));
   const anyLimitMatch = /\bLIMIT\s+(\d+)\b/i.exec(stripped);
   /** 把最外层的那条 LIMIT 换成上限值：子查询里的 LIMIT 不能代表外层，所以取最后一次出现。 */
   const clampTopLevelLimit = () => {
-    const matches = [...stripped.matchAll(/\bLIMIT\s+(\d+)\b/gi)];
+    // 必须在原文（而非去字面量后的版本）上定位：掩码与原文等长，下标才可直接用于切片
+    const matches = [...maskLiterals(sql).matchAll(/\bLIMIT\s+(\d+)\b/gi)];
     const last = matches[matches.length - 1];
     if (!last || last.index === undefined) return sql;
     return sql.slice(0, last.index) + `LIMIT ${guardrailMaxRows}` + sql.slice(last.index + last[0].length);

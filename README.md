@@ -129,7 +129,7 @@ MODEL_MAX_RETRIES=1
 | `npm run dev` | 启动本地开发服务器 |
 | `npm run build` | 生产构建 |
 | `npm start` | 以 Wrangler 运行构建产物 |
-| `npm test` | 运行 133 项自动化回归测试 |
+| `npm test` | 运行 140 项自动化回归测试 |
 | `npm run lint` | 静态检查（oxlint） |
 | `npx tsc --noEmit` | 类型检查 |
 | `npm run eval:ask` | 取数评测：50 条标准问句 + 15 条留出问句 + 12 条能力边界问句，结果写入 artifacts/metrics/ |

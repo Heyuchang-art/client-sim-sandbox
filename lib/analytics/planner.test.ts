@@ -5,6 +5,7 @@
  * 比明确拒答更糟。因此每条用例都断言 SQL 里真的出现了对应条件，而不是只断言「不报错」。
  */
 import { describe, expect, it } from 'vitest';
+import { inspectSql } from './guardrail';
 import { planAnalyticsQuery } from './planner';
 
 function sqlOf(question: string) {
@@ -65,5 +66,48 @@ describe('超出元数据覆盖面时必须拒答', () => {
   it('正常的客户数量提问仍然作答', () => {
     expect(sqlOf('我们有多少位客户')).toContain('客户数');
     expect(sqlOf('沉默客户有多少人')).toContain('NOT IN');
+  });
+});
+describe('明细条件的时间列', () => {
+  it('持仓明细必须用 hold_date，不能沿用流水的时间列', () => {
+    const sql = sqlOf('近 90 日有持仓记录的客户有多少人');
+    expect(sql).toContain('FROM cust_holding WHERE hold_date >=');
+    expect(sql).not.toContain('cust_holding WHERE flow_date');
+  });
+
+  it('交易与资金流水各自使用自己的时间列', () => {
+    expect(sqlOf('近 90 日有交易的客户有多少人')).toContain('FROM cust_trade WHERE trade_date >=');
+    expect(sqlOf('近 90 日有资金流入的客户有多少人')).toContain('FROM cust_cashflow WHERE flow_type = ');
+  });
+});
+
+describe('人均换算必须真的做除法（回归 R3-2）', () => {
+  it('fixed 型指标也要换算成户均', () => {
+    for (const question of ['户均日均资产是多少', '户均净流入是多少', '户均交易金额是多少']) {
+      const sql = sqlOf(question);
+      expect(sql).toContain('/ COUNT(DISTINCT c.cust_id)');
+    }
+  });
+
+  it('整数计数必须转成浮点，否则人均会被截断', () => {
+    expect(sqlOf('人均持仓数量是多少')).toContain('CAST(COUNT(*) AS REAL) / COUNT(DISTINCT c.cust_id)');
+  });
+
+  it('人数与只数这类计数指标不参与人均换算', () => {
+    expect(sqlOf('客户总数是多少')).not.toContain('/ COUNT(DISTINCT');
+    expect(sqlOf('在售产品一共有多少只')).not.toContain('/ COUNT(DISTINCT');
+  });
+});
+
+describe('行数上限收敛不能破坏 SQL（回归 R3-1）', () => {
+  it('含中文字面量时按原文定位，不切坏引号', () => {
+    const check = inspectSql("SELECT cust_id FROM cust_info WHERE branch = '南京鼓楼营业部' LIMIT 5000");
+    expect(check.normalizedSql).toBe("SELECT cust_id FROM cust_info WHERE branch = '南京鼓楼营业部' LIMIT 1000");
+  });
+
+  it('短字面量时不会把上限静默放大', () => {
+    const check = inspectSql("SELECT cust_id FROM cust_info WHERE cust_tag = 'X' LIMIT 5000");
+    expect(check.normalizedSql.endsWith('LIMIT 1000')).toBe(true);
+    expect(check.normalizedSql).not.toContain('10000');
   });
 });

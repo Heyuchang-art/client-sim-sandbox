@@ -63,21 +63,23 @@ type MetricSpec = {
   avg?: string;
   /** 只有一种口径的指标 */
   fixed?: string;
+  /** 显式标注「不参与人均换算」：人数、只数这类本身已经是计数，再除一次没有业务含义 */
+  noPerCapita?: boolean;
   /** 实体计数：命中时不叠加「客户数」，避免把「客户经理有多少人」算成客户数 */
   entity?: boolean;
 };
 
 export const analyticsMetricSpecs: MetricSpec[] = [
-  { key: 'avg_age', label: '平均年龄', patterns: [/平均年龄|年龄的?平均/], tables: ['cust_info'], fixed: 'AVG(c.age) AS 平均年龄' },
+  { key: 'avg_age', label: '平均年龄', patterns: [/平均年龄|年龄的?平均/], tables: ['cust_info'], fixed: 'AVG(c.age) AS 平均年龄', noPerCapita: true },
   {
     key: 'holding_cost', label: '持仓成本', patterns: [/持仓成本|持仓总成本|成本合计|总成本/], tables: ['cust_holding'],
     sum: 'SUM(h.cost_value) AS 持仓成本合计', avg: 'AVG(h.cost_value) AS 平均持仓成本',
   },
-  { key: 'profit_ratio', label: '持仓收益率', patterns: [/收益率|盈亏|浮亏|亏损比例/], tables: ['cust_holding'], fixed: 'AVG(h.profit_ratio) AS 平均收益率' },
+  { key: 'profit_ratio', label: '持仓收益率', patterns: [/收益率|盈亏|浮亏|亏损比例/], tables: ['cust_holding'], fixed: 'AVG(h.profit_ratio) AS 平均收益率', noPerCapita: true },
   { key: 'net_inflow', label: '净流入', patterns: [/净流入|净申购|资金净额/], tables: ['cust_cashflow'], fixed: "SUM(CASE WHEN f.flow_type = '流入' THEN f.amount ELSE -f.amount END) AS 净流入" },
   { key: 'trade_amount', label: '交易金额', patterns: [/交易金额|成交金额|交易额/], tables: ['cust_trade'], fixed: 'SUM(t.trade_amount) AS 交易金额' },
   { key: 'daily_asset', label: '日均资产', patterns: [/日均资产/], tables: ['cust_asset'], fixed: 'SUM(a.daily_avg_asset) AS 日均资产合计' },
-  { key: 'per_capita_asset', label: '人均资产', patterns: [/人均资产|户均资产/], tables: ['cust_asset'], fixed: 'SUM(a.total_asset) / COUNT(DISTINCT a.cust_id) AS 人均资产' },
+  { key: 'per_capita_asset', label: '人均资产', patterns: [/人均资产|户均资产/], tables: ['cust_asset'], fixed: 'SUM(a.total_asset) / COUNT(DISTINCT a.cust_id) AS 人均资产', noPerCapita: true },
   {
     key: 'holding_value', label: '持仓市值', patterns: [/持仓市值|持仓规模/], tables: ['cust_holding'],
     sum: 'SUM(h.market_value) AS 持仓市值合计', avg: 'AVG(h.market_value) AS 平均持仓市值',
@@ -86,12 +88,12 @@ export const analyticsMetricSpecs: MetricSpec[] = [
     key: 'total_asset', label: '总资产', patterns: [/总资产|资产规模|资产合计/], tables: ['cust_asset'],
     sum: 'SUM(a.total_asset) AS 总资产合计', avg: 'AVG(a.total_asset) AS 平均总资产',
   },
-  { key: 'product_count', label: '产品数', patterns: [/多少只产品|产品有几只|产品数量|在售产品|产品总数/], tables: ['prod_info'], fixed: 'COUNT(*) AS 产品数', entity: true },
-  { key: 'manager_count', label: '客户经理数', patterns: [/客户经理.{0,6}(多少|几|人数|数量)/], tables: ['mgr_info'], fixed: 'COUNT(DISTINCT m.mgr_id) AS 客户经理数', entity: true },
+  { key: 'product_count', label: '产品数', patterns: [/多少只产品|产品有几只|产品数量|在售产品|产品总数/], tables: ['prod_info'], fixed: 'COUNT(*) AS 产品数', entity: true, noPerCapita: true },
+  { key: 'manager_count', label: '客户经理数', patterns: [/客户经理.{0,6}(多少|几|人数|数量)/], tables: ['mgr_info'], fixed: 'COUNT(DISTINCT m.mgr_id) AS 客户经理数', entity: true, noPerCapita: true },
   {
     key: 'customer_count', label: '客户数',
     patterns: [/客户数|客户总数|客户数量|多少(名|位|个)?客户|客户.{0,6}有多少|有多少(名|位|个)?(人|客户)/],
-    tables: ['cust_info'], fixed: 'COUNT(DISTINCT c.cust_id) AS 客户数',
+    tables: ['cust_info'], fixed: 'COUNT(DISTINCT c.cust_id) AS 客户数', noPerCapita: true,
   },
   { key: 'trade_count', label: '交易笔数', patterns: [/交易笔数|交易次数|交易记录|成交笔数|交易数量/], tables: ['cust_trade'], fixed: 'COUNT(*) AS 交易笔数' },
   { key: 'flow_count', label: '流水条数', patterns: [/资金流水|流水条数|流水记录|流水数量/], tables: ['cust_cashflow'], fixed: 'COUNT(*) AS 流水条数' },
@@ -108,8 +110,9 @@ const branchNames = ['南京中山路营业部', '南京鼓楼营业部', '苏�
  * 「客户数 1000」属于答非所问，比拒答更糟。
  */
 const outOfDomainTerms = [
-  '投诉', '满意度', '抱怨', '情绪', '意向', '流失', '名单', '电话', '联系方式', '微信',
+  '投诉', '满意度', '抱怨', '情绪', '意向', '流失', '名单', '联系方式', '微信',
   'kpi', '销售额', '营业收入', '营收', '行情', '大盘', '涨跌', '公告', '新闻', '舆情', '研报', '预测',
+  // 注意：「电话」「线下」是服务渠道的合法取值，不能放进域外词表
 ];
 
 /** 客群标签字段口径：只按资产划分。活跃/沉默由交易与资金流水派生。 */
@@ -137,12 +140,21 @@ function extractFilters(text: string, days: number | null) {
   const where: string[] = [];
   const tables = new Set<string>();
   const open = /及以上|以上|更高|至少|不低于/.test(text);
-  /** 明细类条件一律用子查询表达：并进 FROM 会把主表收窄，与「有没有」的语义不符。 */
-  const detailSubquery = (table: 'cust_trade' | 'cust_cashflow', extra: string[] = []) => {
+  /**
+   * 明细类条件一律用子查询表达：并进 FROM 会把主表收窄，与「有没有」的语义不符。
+   * 每张明细表的时间列各自不同，必须查表而不能用「非 A 即 B」的写法——
+   * 否则「近 90 日有持仓记录」会生成 cust_holding.flow_date 这种不存在的字段。
+   */
+  const detailTimeColumn: Record<string, string> = {
+    cust_trade: 'trade_date',
+    cust_cashflow: 'flow_date',
+    cust_holding: 'hold_date',
+  };
+  const detailSubquery = (table: keyof typeof detailTimeColumn, extra: string[] = []) => {
     const conditions = [...extra];
     if (days !== null) {
-      const column = table === 'cust_trade' ? 'trade_date' : 'flow_date';
-      conditions.push(`${column} >= date('${analyticsSnapshotDate}', '-${days} day')`);
+      const column = detailTimeColumn[table];
+      if (column) conditions.push(`${column} >= date('${analyticsSnapshotDate}', '-${days} day')`);
     }
     return `SELECT cust_id FROM ${table}${conditions.length ? ` WHERE ${conditions.join(' AND ')}` : ''}`;
   };
@@ -177,6 +189,10 @@ function extractFilters(text: string, days: number | null) {
   const branch = branchNames.find((item) => text.includes(item));
   if (branch) where.push(`c.branch = '${branch}'`);
 
+  // 服务渠道的具体取值（App / 电话 / 线下）
+  const channelValue = ['App', '电话', '线下'].find((item) => text.includes(item));
+  if (channelValue) where.push(`c.channel = '${channelValue}'`);
+
   const product = [...analyticsProducts].sort((a, b) => b.prod_name.length - a.prod_name.length).find((item) => text.includes(item.prod_name));
   if (product) {
     tables.add('prod_info');
@@ -209,7 +225,7 @@ function extractFilters(text: string, days: number | null) {
     where.push(`c.cust_id IN (${detailSubquery('cust_trade')})`);
   }
   if (/有持仓记录|有持仓的客户|持有产品/.test(text)) {
-    where.push(`c.cust_id IN (${detailSubquery('cust_holding' as 'cust_trade')})`);
+    where.push(`c.cust_id IN (${detailSubquery('cust_holding')})`);
   }
   if (/有资金流入|有流入|流入记录/.test(text)) {
     where.push(`c.cust_id IN (${detailSubquery('cust_cashflow', ["flow_type = '流入'"])})`);
@@ -316,11 +332,11 @@ export function planAnalyticsQuery(question: string): PlannedQuery | null {
   const wantsAverage = /平均|均值/.test(text);
   const perCapita = /人均|户均|客均|平均每(位|名|个)客户/.test(text);
   const expressions = picked.map((metric) => {
-    if (perCapita && metric.key !== 'per_capita_asset' && !metric.fixed) {
+    if (perCapita && !metric.noPerCapita) {
       // 「户均持仓市值」= 合计 ÷ 客户数，必须真的做除法，否则会差出几个数量级
-      const source = metric.sum ?? metric.avg ?? '';
+      const source = metric.sum ?? metric.avg ?? metric.fixed ?? '';
       const aggregate = /^([\s\S]*?)\s+AS\s+/.exec(source)?.[1] ?? source;
-      if (aggregate) return `${aggregate} / COUNT(DISTINCT c.cust_id) AS 户均${metric.label}`;
+      if (aggregate) return `CAST(${aggregate} AS REAL) / COUNT(DISTINCT c.cust_id) AS 户均${metric.label}`;
     }
     if (metric.fixed) return metric.fixed;
     return wantsAverage ? metric.avg ?? metric.sum ?? metric.fixed ?? '' : metric.sum ?? metric.avg ?? metric.fixed ?? '';
