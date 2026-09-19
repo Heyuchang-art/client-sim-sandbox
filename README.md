@@ -121,6 +121,7 @@ MODEL_MAX_RETRIES=1
 | `npm run eval:plan` | 评测 20 个标准任务的规划与工具调用 |
 | `npm run eval:compliance` | 评测 32 条标注合规语料 |
 | `npm run eval:strategies` | 沟通策略验收扫描：与效用权重无关的结构性质、权重敏感性曲面与已知边界 |
+| `python scripts/build-docx.py` | 重新生成初赛申报书（需 python-docx 与 Pillow） |
 
 服务端实测需要开发服务器在运行：
 
