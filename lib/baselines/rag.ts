@@ -60,6 +60,17 @@ export type RetrievedDoc = KnowledgeDoc & { score: number };
 /**
  * BM25 检索：k1/b 采用通用默认值，返回与查询最相关的若干条内部知识。
  */
+/**
+ * 检索结果是否属于「知识缺失」：没有任何文档命中查询词，或最高分低于相关度下限。
+ * 该判定用于让检索类功能在知识库覆盖不到问题时显式降级，而不是静默返回空列表。
+ */
+export const knowledgeRelevanceFloor = 0.5;
+
+export function isKnowledgeMissing(retrieved: RetrievedDoc[]): boolean {
+  if (retrieved.length === 0) return true;
+  return retrieved[0].score < knowledgeRelevanceFloor;
+}
+
 export function bm25Search(query: string, limit = 3, corpus: KnowledgeDoc[] = knowledgeCorpus): RetrievedDoc[] {
   const queryTokens = [...new Set(tokenize(query))];
   if (queryTokens.length === 0) return [];

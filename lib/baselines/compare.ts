@@ -1,4 +1,4 @@
-import { bm25Search, type RetrievedDoc } from './rag';
+import { bm25Search, isKnowledgeMissing, type RetrievedDoc } from './rag';
 import {
   runSimulation,
 
@@ -118,7 +118,9 @@ export function compareModes(scenario: ScenarioConfig, options: ComparisonOption
   const textModes: ComparisonMode[] = ['llm-only', 'llm-rag'];
   for (const mode of textModes) {
     const startedAt = Date.now();
-    const knowledge = mode === 'llm-rag' ? retrieved : [];
+    // 知识库检索不到相关内容时显式降级为无检索，并把「知识缺失」记进说明，不静默返回空列表。
+    const knowledgeMissing = mode === 'llm-rag' && isKnowledgeMissing(retrieved);
+    const knowledge = mode === 'llm-rag' && !knowledgeMissing ? retrieved : [];
     const scores = strategyDefinitions.map((definition) => ({ id: definition.id, score: textScore(definition.id, knowledge) }));
     const ranking = rankingFromScores(scores);
     const latencyMs = Date.now() - startedAt;
@@ -139,7 +141,9 @@ export function compareModes(scenario: ScenarioConfig, options: ComparisonOption
       engineMs: null,
       retrieved: knowledge.map((doc) => doc.id),
       note: (mode === 'llm-rag'
-        ? '未接入模型，降级为内置规则近似：以检索到的投教/合规语料覆盖度修正策略排序。'
+        ? (knowledgeMissing
+          ? '知识缺失（KNOWLEDGE_MISSING）：知识库未命中相关内容，已降级为无检索，仅依据策略文本线索排序。'
+          : '未接入模型，降级为内置规则近似：以检索到的投教/合规语料覆盖度修正策略排序。')
         : '未接入模型，降级为内置规则近似：仅依据策略文本线索排序，不运行数值模拟。')
         + '该行不是模型表现，不能作为能力对照结论。',
     });
